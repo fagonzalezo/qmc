@@ -206,6 +206,12 @@ class QMeasurement(tf.keras.layers.Layer):
         self.dim_y = dim_y
 
     def build(self, input_shape):
+        if input_shape[1] == None:
+            raise ValueError('Input dimension undetermined. '
+                             'A `QMeasurement` layer needs to know the dimension of '
+                             'its input. Try directly calling `model.call()` of the '
+                             'model that uses the layer with a sample input before '
+                             'calling `fit()`')
         self.rho = self.add_weight(
             "rho",
             shape=(input_shape[1], self.dim_y, input_shape[1], self.dim_y),

@@ -30,6 +30,8 @@ class QMClassifier(tf.keras.Model):
 
     @tf.function
     def call_train(self, x, y):
+        if not self.qm.built:
+            self.call(x)
         psi_x = self.fm_x(x)
         psi_y = self.fm_y(y)
         psi = self.cp1([psi_x, psi_y])
@@ -41,7 +43,6 @@ class QMClassifier(tf.keras.Model):
     def train_step(self, data):
         x, y = data
         rho = self.call_train(x, y)
-        print(rho.shape)
         self.qm.weights[0].assign_add(rho)
         return {}
 

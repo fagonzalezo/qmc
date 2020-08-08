@@ -127,20 +127,23 @@ class QFeatureMapRFF(tf.keras.layers.Layer):
     Output shape:
         (batch_size, dim)
     Arguments:
+        input_dim: dimension of the input
         dim: int. Number of dimensions to represent a sample.
         gamma: float. Gamma parameter of the RBF kernel to be approximated.
-        random_state: random number generator seed. 
+        random_state: random number generator seed.
     """
 
     @typechecked
     def __init__(
             self,
+            input_dim: int,
             dim: int = 100,
             gamma: float = 1,
-            random_state=None, 
+            random_state=None,
             **kwargs
     ):
         super().__init__(**kwargs)
+        self.input_dim = input_dim
         self.dim = dim
         self.gamma = gamma
         self.random_state = random_state
@@ -148,17 +151,21 @@ class QFeatureMapRFF(tf.keras.layers.Layer):
 
     def build(self, input_shape):
         rbf_sampler = RBFSampler(
-            gamma=self.gamma, 
+            gamma=self.gamma,
             n_components=self.dim,
             random_state=self.random_state)
-        X = np.zeros(shape=input_shape.as_list())
-        rbf_sampler.fit(X)
-        self.rff_weights = tf.constant(
-            rbf_sampler.random_weights_,
-            dtype=tf.float32)
-        self.offset = tf.constant(
-            rbf_sampler.random_offset_,
-            dtype=tf.float32)
+        x = np.zeros(shape=(1, self.input_dim))
+        rbf_sampler.fit(x)
+        self.rff_weights = tf.Variable(
+            initial_value=rbf_sampler.random_weights_,
+            dtype=tf.float32,
+            trainable=True,
+            name="rff_weights")
+        self.offset = tf.Variable(
+            initial_value=rbf_sampler.random_offset_,
+            dtype=tf.float32,
+            trainable=True,
+            name="offset")
         self.built = True
 
     def call(self, inputs):
@@ -171,6 +178,7 @@ class QFeatureMapRFF(tf.keras.layers.Layer):
 
     def get_config(self):
         config = {
+            "input_dim": self.input_dim,
             "dim": self.dim,
             "gamma": self.gamma,
             "random_state": self.random_state
@@ -206,12 +214,13 @@ class QMeasurement(tf.keras.layers.Layer):
         self.dim_y = dim_y
 
     def build(self, input_shape):
-        if input_shape[1] == None:
-            raise ValueError('Input dimension undetermined. '
-                             'A `QMeasurement` layer needs to know the dimension of '
-                             'its input. Try directly calling `model.call()` of the '
-                             'model that uses the layer with a sample input before '
-                             'calling `fit()`')
+        if input_shape[1] is None:
+            raise ValueError(
+                'Input dimension undetermined. '
+                'A `QMeasurement` layer needs to know the dimension of '
+                'its input. Try directly calling `model.call()` of the '
+                'model that uses the layer with a sample input before '
+                'calling `fit()`')
         self.rho = self.add_weight(
             "rho",
             shape=(input_shape[1], self.dim_y, input_shape[1], self.dim_y),
@@ -242,6 +251,106 @@ class QMeasurement(tf.keras.layers.Layer):
 
     def get_config(self):
         config = {
+            "dim_y": self.dim_y
+        }
+        base_config = super().get_config()
+        return {**base_config, **config}
+
+    def compute_output_shape(self, input_shape):
+        return (self.dim_y, self.dim_y)
+
+class QMeasurementEig(tf.keras.layers.Layer):
+    """Quantum measurement layer.
+    Represents the density matrix using a factorization:
+    
+    `dm = tf.matmul(V, tf.transpose(V, conjugate=True))`
+
+    This rerpesentation is ameanable to gradient-based learning
+
+    Input shape:
+        (batch_size, dim_x)
+        where dim_x is the dimension of the input state
+    Output shape:
+        (batch_size, dim_y, dim_y)
+        where dim_y is the dimension of the output state
+    Arguments:
+        dim_y: int. the dimension of the output state
+    """
+
+    @typechecked
+    def __init__(
+            self,
+            dim_x: int,
+            dim_y: int = 2,
+            **kwargs
+    ):
+        super().__init__(**kwargs)
+        self.dim_x = dim_x
+        self.dim_y = dim_y
+
+    def build(self, input_shape):
+        if input_shape[1] != self.dim_x:
+            raise ValueError(
+                f'Input dimension must be (batch_size, {self.dim_x})')
+        self.rho_h = self.add_weight(
+            "rho_h",
+            shape=(self.dim_x * self.dim_y, self.dim_x * self.dim_y),
+            initializer=tf.keras.initializers.random_normal(),
+            trainable=True)
+        axes = {i: input_shape[i] for i in range(1, len(input_shape))}
+        self.input_spec = tf.keras.layers.InputSpec(
+            ndim=len(input_shape), axes=axes)
+        self.built = True
+
+    def call(self, inputs):
+        oper = tf.einsum(
+            '...i,...j->...ij',
+            inputs, tf.math.conj(inputs),
+            optimize='optimal') # shape (b, nx, nx)
+        rho = tf.matmul(
+            self.rho_h, 
+            tf.transpose(self.rho_h, conjugate=True))
+        rho = tf.reshape(
+            rho, 
+            (self.dim_x, self.dim_y, self.dim_x, self.dim_y))
+        rho_res = tf.einsum(
+            '...ik, klmn, ...mo -> ...ilon',
+            oper, rho, oper,
+            optimize='optimal')  # shape (b, nx, ny, nx, ny)
+        trace_val = tf.einsum('...ijij->...', rho_res, optimize='optimal') # shape (b)
+        trace_val = tf.expand_dims(trace_val, axis=-1)
+        trace_val = tf.expand_dims(trace_val, axis=-1)
+        trace_val = tf.expand_dims(trace_val, axis=-1)
+        trace_val = tf.expand_dims(trace_val, axis=-1)
+        rho_res = rho_res / trace_val
+        rho_y = tf.einsum('...ijik->...jk', rho_res, optimize='optimal') # shape (b, ny, ny)
+        return rho_y
+
+    def set_rho(self, rho):
+        """
+        Sets the value of self.rho_h using an eigendecomposition.
+
+        Arguments:
+            rho: a tensor of shape (dim_x, dim_y, dim_x, dim_y)
+        """
+        if (len(rho.shape.as_list()) != 4 or
+                rho.shape[0] != self.dim_x or
+                rho.shape[2] != self.dim_x or
+                rho.shape[1] != self.dim_y or
+                rho.shape[3] != self.dim_y):
+            raise ValueError(
+                f'rho shape must be ({self.dim_x}, {self.dim_y} '
+                f'{self.dim_x}, {self.dim_y})')
+        rho_prime = tf.reshape(
+            rho, 
+            (self.dim_x * self.dim_y, self.dim_x * self.dim_y,))
+        e, v = tf.linalg.eigh(rho_prime)
+        e = tf.abs(e)
+        self.rho_h.assign(tf.matmul(v, tf.linalg.diag(tf.sqrt(e))))
+
+    def get_config(self):
+        config = {
+            "dim_x": self.dim_x,
             "dim_y": self.dim_y
         }
         base_config = super().get_config()

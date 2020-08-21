@@ -9,13 +9,23 @@ import numpy as np
 from qmc.tf import layers
 from qmc.tf import models
 
-inputs = tf.ones((2,3))
+
 data_x = tf.constant([[0., 0.],
                    [0., 1,],
                    [1., 0,],
                    [1., 1,]
                   ])
 data_y = tf.constant([[0], [1], [1], [0]])
+fm_x = layers.QFeatureMapRFF(input_dim=2, dim=10, gamma=4, random_state=10)
+qmd = models.QMDensity(fm_x)
+out = qmd(data_x)
+print(out)
+qmd.compile()
+qmd.fit(data_x, data_y, epochs=1)
+out = qmd(data_x)
+print(out)
+
+
 #fm_x = layers.QFeatureMapSmp(dim=2, beta=10)
 fm_x = layers.QFeatureMapRFF(input_dim=2, dim=10, gamma=4, random_state=10)
 fm_y = layers.QFeatureMapOneHot(num_classes=2)

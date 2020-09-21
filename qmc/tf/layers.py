@@ -201,29 +201,28 @@ class QMeasureClassif(tf.keras.layers.Layer):
         (batch_size, dim_y, dim_y)
         where dim_y is the dimension of the output state
     Arguments:
+        dim_x: int. the dimension of the input  state
         dim_y: int. the dimension of the output state
     """
 
     @typechecked
     def __init__(
             self,
+            dim_x: int,
             dim_y: int = 2,
             **kwargs
     ):
         super().__init__(**kwargs)
+        self.dim_x = dim_x
         self.dim_y = dim_y
 
     def build(self, input_shape):
-        if input_shape[1] is None:
+        if (not input_shape[1] is None) and input_shape[1] != self.dim_x:
             raise ValueError(
-                'Input dimension undetermined. '
-                'A `QMeasureClassif` layer needs to know the dimension of '
-                'its input. Try directly calling `model.call()` of the '
-                'model that uses the layer with a sample input before '
-                'calling `fit()`')
+                f'Input dimension must be (batch_size, {self.dim_x})')
         self.rho = self.add_weight(
             "rho",
-            shape=(input_shape[1], self.dim_y, input_shape[1], self.dim_y),
+            shape=(self.dim_x, self.dim_y, self.dim_x, self.dim_y),
             initializer=tf.keras.initializers.Zeros(),
             trainable=True)
         axes = {i: input_shape[i] for i in range(1, len(input_shape))}
@@ -239,7 +238,7 @@ class QMeasureClassif(tf.keras.layers.Layer):
         rho_res = tf.einsum(
             '...ik, klmn, ...mo -> ...ilon',
             oper, self.rho, oper,
-            optimize='optimal')  # shape (b, nx, ny, nx, ny)
+            optimize='optimal')  # shape (b, nx, ny, ny, nx)
         trace_val = tf.einsum('...ijij->...', rho_res, optimize='optimal') # shape (b)
         trace_val = tf.expand_dims(trace_val, axis=-1)
         trace_val = tf.expand_dims(trace_val, axis=-1)
@@ -251,6 +250,7 @@ class QMeasureClassif(tf.keras.layers.Layer):
 
     def get_config(self):
         config = {
+            "dim_x": self.dim_x,
             "dim_y": self.dim_y
         }
         base_config = super().get_config()
@@ -283,19 +283,28 @@ class QMeasureClassifEig(tf.keras.layers.Layer):
             self,
             dim_x: int,
             dim_y: int = 2,
+            num_eig: int = 0,
             **kwargs
     ):
         super().__init__(**kwargs)
         self.dim_x = dim_x
         self.dim_y = dim_y
+        if num_eig < 1:
+            num_eig = dim_x
+        self.num_eig = num_eig
 
     def build(self, input_shape):
         if input_shape[1] != self.dim_x:
             raise ValueError(
                 f'Input dimension must be (batch_size, {self.dim_x})')
-        self.rho_h = self.add_weight(
-            "rho_h",
-            shape=(self.dim_x * self.dim_y, self.dim_x * self.dim_y),
+        self.eig_vec = self.add_weight(
+            "eig_vec",
+            shape=(self.dim_x * self.dim_y, self.num_eig),
+            initializer=tf.keras.initializers.random_normal(),
+            trainable=True)
+        self.eig_val = self.add_weight(
+            "eig_val",
+            shape=(self.num_eig,),
             initializer=tf.keras.initializers.random_normal(),
             trainable=True)
         axes = {i: input_shape[i] for i in range(1, len(input_shape))}
@@ -308,16 +317,22 @@ class QMeasureClassifEig(tf.keras.layers.Layer):
             '...i,...j->...ij',
             inputs, tf.math.conj(inputs),
             optimize='optimal') # shape (b, nx, nx)
+        norms = tf.expand_dims(tf.linalg.norm(self.eig_vec, axis=0), axis=0)
+        eig_vec = self.eig_vec / norms
+        eig_val = tf.keras.activations.relu(self.eig_val)
+        eig_val = eig_val / tf.reduce_sum(eig_val)
+        rho_h = tf.matmul(eig_vec,
+                          tf.linalg.diag(tf.sqrt(eig_val)))
         rho = tf.matmul(
-            self.rho_h, 
-            tf.transpose(self.rho_h, conjugate=True))
+            rho_h, 
+            tf.transpose(rho_h, conjugate=True))
         rho = tf.reshape(
             rho, 
             (self.dim_x, self.dim_y, self.dim_x, self.dim_y))
         rho_res = tf.einsum(
             '...ik, klmn, ...mo -> ...ilon',
             oper, rho, oper,
-            optimize='optimal')  # shape (b, nx, ny, nx, ny)
+            optimize='optimal')  # shape (b, nx, ny, ny, nx)
         trace_val = tf.einsum('...ijij->...', rho_res, optimize='optimal') # shape (b)
         trace_val = tf.expand_dims(trace_val, axis=-1)
         trace_val = tf.expand_dims(trace_val, axis=-1)
@@ -340,14 +355,17 @@ class QMeasureClassifEig(tf.keras.layers.Layer):
                 rho.shape[1] != self.dim_y or
                 rho.shape[3] != self.dim_y):
             raise ValueError(
-                f'rho shape must be ({self.dim_x}, {self.dim_y} '
-                f'{self.dim_x}, {self.dim_y})')
+                f'rho shape must be ({self.dim_x}, {self.dim_y},'
+                f' {self.dim_x}, {self.dim_y})')
+        if not self.built:
+            self.build((None, self.dim_x))
         rho_prime = tf.reshape(
             rho, 
             (self.dim_x * self.dim_y, self.dim_x * self.dim_y,))
         e, v = tf.linalg.eigh(rho_prime)
-        e = tf.abs(e)
-        self.rho_h.assign(tf.matmul(v, tf.linalg.diag(tf.sqrt(e))))
+        self.eig_vec.assign(v[:, -self.num_eig:])
+        self.eig_val.assign(e[-self.num_eig:])
+        return e
 
     def get_config(self):
         config = {
@@ -369,26 +387,25 @@ class QMeasureDensity(tf.keras.layers.Layer):
     Output shape:
         (batch_size, 1)
     Arguments:
+        dim_x: int. the dimension of the input  state
     """
 
     @typechecked
     def __init__(
             self,
+            dim_x: int,
             **kwargs
     ):
+        self.dim_x = dim_x
         super().__init__(**kwargs)
 
     def build(self, input_shape):
-        if input_shape[1] is None:
+        if (not input_shape[1] is None) and input_shape[1] != self.dim_x:
             raise ValueError(
-                'Input dimension undetermined. '
-                'A `QMeasureDensity` layer needs to know the dimension of '
-                'its input. Try directly calling `model.call()` of the '
-                'model that uses the layer with a sample input before '
-                'calling `fit()`')
+                f'Input dimension must be (batch_size, {self.dim_x})')
         self.rho = self.add_weight(
             "rho",
-            shape=(input_shape[1], input_shape[1]),
+            shape=(self.dim_x, self.dim_x),
             initializer=tf.keras.initializers.Zeros(),
             trainable=True)
         axes = {i: input_shape[i] for i in range(1, len(input_shape))}
@@ -442,7 +459,7 @@ class QMeasureDensityEig(tf.keras.layers.Layer):
         self.num_eig = num_eig
 
     def build(self, input_shape):
-        if input_shape[1] != self.dim_x:
+        if (not input_shape[1] is None) and input_shape[1] != self.dim_x:
             raise ValueError(
                 f'Input dimension must be (batch_size, {self.dim_x})')
         self.eig_vec = self.add_weight(
@@ -494,6 +511,8 @@ class QMeasureDensityEig(tf.keras.layers.Layer):
                 rho.shape[1] != self.dim_x):
             raise ValueError(
                 f'rho shape must be ({self.dim_x}, {self.dim_x})')
+        if not self.built:
+            self.build((None, self.dim_x))        
         e, v = tf.linalg.eigh(rho)
         self.eig_vec.assign(v[:, -self.num_eig:])
         self.eig_val.assign(e[-self.num_eig:])
@@ -502,7 +521,7 @@ class QMeasureDensityEig(tf.keras.layers.Layer):
     def get_config(self):
         config = {
             "dim_x": self.dim_x,
-            "num_eig ": self.num_eig 
+            "num_eig ": self.num_eig
         }
         base_config = super().get_config()
         return {**base_config, **config}

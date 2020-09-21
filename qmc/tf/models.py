@@ -11,16 +11,21 @@ class QMClassifier(tf.keras.Model):
     Arguments:
         fm_x: Quantum feature map layer for inputs
         fm_y: Quantum feature map layer for outputs
+        dim_x: dimension of the input quantum feature map
         dim_y: dimension of the output representation
     """
-    def __init__(self, fm_x, fm_y, dim_y):
+    def __init__(self, fm_x, fm_y, dim_x, dim_y):
         super(QMClassifier, self).__init__()
         self.fm_x = fm_x
         self.fm_y = fm_y
-        self.qm = layers.QMeasureClassif(dim_y=dim_y)
+        self.qm = layers.QMeasureClassif(dim_x=dim_x, dim_y=dim_y)
         self.dm2dist = layers.DensityMatrix2Dist()
         self.cp1 = layers.CrossProduct()
         self.cp2 = layers.CrossProduct()
+        self.num_samples = tf.Variable(
+            initial_value=0.,
+            trainable=False     
+            )
 
     def call(self, inputs):
         psi_x = self.fm_x(inputs)
@@ -37,7 +42,8 @@ class QMClassifier(tf.keras.Model):
         psi = self.cp1([psi_x, psi_y])
         rho = self.cp2([psi, tf.math.conj(psi)])
         num_samples = tf.cast(tf.shape(x)[0], rho.dtype)
-        rho = tf.reduce_sum(rho, axis=0) / num_samples
+        rho = tf.reduce_sum(rho, axis=0)
+        self.num_samples.assign_add(num_samples)
         return rho
 
     def train_step(self, data):
@@ -46,8 +52,17 @@ class QMClassifier(tf.keras.Model):
         self.qm.weights[0].assign_add(rho)
         return {}
 
+    def fit(self, *args, **kwargs):
+        result = super(QMClassifier, self).fit(*args, **kwargs)
+        self.qm.weights[0].assign(self.qm.weights[0] / self.num_samples)
+        return result
+
+    def get_rho(self):
+        return self.weights[2]
+
     def get_config(self):
         config = {
+            "dim_x": self.dim_x,
             "dim_y": self.dim_y
         }
         base_config = super().get_config()
@@ -63,15 +78,17 @@ class QMClassifierSGD(tf.keras.Model):
         input_dim: dimension of the input
         dim_x: dimension of the input quantum feature map
         dim_y: dimension of the output representation
+        num_eig: Number of eigenvectors used to represent the density matrix. 
+                 a value of 0 or less implies num_eig = dim_x
         gamma: float. Gamma parameter of the RBF kernel to be approximated.
         random_state: random number generator seed.
     """
-    def __init__(self, input_dim, dim_x, dim_y, gamma=1, random_state=None):
+    def __init__(self, input_dim, dim_x, dim_y, num_eig=0, gamma=1, random_state=None):
         super(QMClassifierSGD, self).__init__()
         self.fm_x = layers.QFeatureMapRFF(
             input_dim=input_dim,
             dim=dim_x, gamma=gamma, random_state=random_state)
-        self.qm = layers.QMeasureClassifEig(dim_x=dim_x, dim_y=dim_y)
+        self.qm = layers.QMeasureClassifEig(dim_x=dim_x, dim_y=dim_y, num_eig=num_eig)
         self.dm2dist = layers.DensityMatrix2Dist()
         self.dim_x = dim_x
         self.dim_y = dim_y
@@ -85,12 +102,13 @@ class QMClassifierSGD(tf.keras.Model):
         return probs
 
     def set_rho(self, rho):
-        self.qm.set_rho(rho)
+        return self.qm.set_rho(rho)
 
     def get_config(self):
         config = {
             "dim_x": self.dim_x,
             "dim_y": self.dim_y,
+            "num_eig": self.num_eig,
             "gamma": self.gamma,
             "random_state": self.random_state
         }
@@ -102,11 +120,13 @@ class QMDensity(tf.keras.Model):
     A Quantum Measurement Density Estimation model.
     Arguments:
         fm_x: Quantum feature map layer for inputs
+        dim_x: dimension of the input quantum feature map
     """
-    def __init__(self, fm_x):
+    def __init__(self, fm_x, dim_x):
         super(QMDensity, self).__init__()
         self.fm_x = fm_x
-        self.qmd = layers.QMeasureDensity()
+        self.dim_x = dim_x
+        self.qmd = layers.QMeasureDensity(dim_x)
         self.cp = layers.CrossProduct()
         self.num_samples = tf.Variable(
             initial_value=0.,
@@ -139,6 +159,10 @@ class QMDensity(tf.keras.Model):
         result = super(QMDensity, self).fit(*args, **kwargs)
         self.qmd.weights[0].assign(self.qmd.weights[0] / self.num_samples)
         return result
+
+    def get_config(self):
+        base_config = super().get_config()
+        return {**base_config}
 
 class QMDensitySGD(tf.keras.Model):
     """
@@ -182,4 +206,127 @@ class QMDensitySGD(tf.keras.Model):
         base_config = super().get_config()
         return {**base_config, **config}
 
+class QMKDClassifier(tf.keras.Model):
+    """
+    A Quantum Measurement Kernel Density Classifier model.
+    Arguments:
+        fm_x: Quantum feature map layer for inputs
+        dim_x: dimension of the input quantum feature map
+        num_classes: int number of classes
+    """
+    def __init__(self, fm_x, dim_x, num_classes=2):
+        super(QMKDClassifier, self).__init__()
+        self.fm_x = fm_x
+        self.dim_x = dim_x
+        self.num_classes = num_classes
+        self.qmd = []
+        for _ in range(num_classes):
+            self.qmd.append(layers.QMeasureDensity(dim_x))
+        self.cp = layers.CrossProduct()
+        self.num_samples = tf.Variable(
+            initial_value=tf.zeros((num_classes,)),
+            trainable=False
+            )
 
+    def call(self, inputs):
+        psi_x = self.fm_x(inputs)
+        probs = []
+        for i in range(self.num_classes):
+            probs.append(self.qmd[i](psi_x))
+        posteriors = tf.stack(probs, axis=-1)
+        posteriors = posteriors / tf.expand_dims(tf.reduce_sum(posteriors, axis=-1), axis=-1)
+        return posteriors
+
+    @tf.function
+    def call_train(self, x, y):
+        if not self.qmd[0].built:
+            self.call(x)
+        psi = self.fm_x(x) # shape (bs, dim_x)
+        rho = self.cp([psi, tf.math.conj(psi)]) # shape (bs, dim_x, dim_x)
+        ohy = tf.keras.backend.one_hot(y, self.num_classes)
+        ohy = tf.squeeze(ohy)
+        num_samples = tf.squeeze(tf.reduce_sum(ohy, axis=0))
+        ohy = tf.expand_dims(ohy, axis=-1) 
+        ohy = tf.expand_dims(ohy, axis=-1) # shape (bs, num_classes, 1, 1)
+        rhos = ohy * tf.expand_dims(rho, axis=1) # shape (bs, num_classes, dim_x, dim_x)
+        rhos = tf.reduce_sum(rhos, axis=0) # shape (num_classes, dim_x, dim_x)
+        self.num_samples.assign_add(num_samples)
+        return rhos
+
+    def train_step(self, data):
+        x, y = data
+        rhos = self.call_train(x, y)
+        for i in range(self.num_classes):
+            self.qmd[i].weights[0].assign_add(rhos[i])
+        return {}
+
+    def fit(self, *args, **kwargs):
+        result = super(QMKDClassifier, self).fit(*args, **kwargs)
+        for i in range(self.num_classes):
+            self.qmd[i].weights[0].assign(self.qmd[i].weights[0] /
+                                          self.num_samples[i])
+        return result
+
+    def get_rhos(self):
+        return self.weights[2: -1]
+
+    def get_config(self):
+        config = {
+            "dim_x": self.dim_x
+        }
+        base_config = super().get_config()
+        return {**base_config, **config}
+
+class QMKDClassifierSGD(tf.keras.Model):
+    """
+    A Quantum Measurement Kernel Density Classifier model trainable using
+    gradient descent.
+
+    Arguments:
+        input_dim: dimension of the input
+        dim_x: dimension of the input quantum feature map
+        num_classes: number of classes
+        num_eig: Number of eigenvectors used to represent the density matrix. 
+                 a value of 0 or less implies num_eig = dim_x
+        gamma: float. Gamma parameter of the RBF kernel to be approximated
+        random_state: random number generator seed
+    """
+    def __init__(self, input_dim, dim_x, num_classes, num_eig=0, gamma=1, random_state=None):
+        super(QMKDClassifierSGD, self).__init__()
+        self.fm_x = layers.QFeatureMapRFF(
+            input_dim=input_dim,
+            dim=dim_x, gamma=gamma, random_state=random_state)
+        self.dim_x = dim_x
+        self.num_classes = num_classes
+        self.qmd = []
+        for _ in range(num_classes):
+            self.qmd.append(layers.QMeasureDensityEig(dim_x, num_eig))
+        self.cp = layers.CrossProduct()
+        self.gamma = gamma
+        self.random_state = random_state
+
+    def call(self, inputs):
+        psi_x = self.fm_x(inputs)
+        probs = []
+        for i in range(self.num_classes):
+            probs.append(self.qmd[i](psi_x))
+        posteriors = tf.stack(probs, axis=-1)
+        posteriors = (posteriors / 
+                      tf.expand_dims(tf.reduce_sum(posteriors, axis=-1), axis=-1))
+        return posteriors
+
+    def set_rhos(self, rhos):
+        for i in range(self.num_classes):
+            self.qmd[i].set_rho(rhos[i])
+        return
+
+    def get_config(self):
+        config = {
+            "dim_x": self.dim_x,
+            "num_classes": self.num_classes,
+            "num_eig": self.num_eig,
+            "gamma": self.gamma,
+            "random_state": self.random_state
+        }
+        base_config = super().get_config()
+        return {**base_config, **config}

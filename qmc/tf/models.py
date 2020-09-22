@@ -268,11 +268,13 @@ class QMKDClassifier(tf.keras.Model):
         return result
 
     def get_rhos(self):
-        return self.weights[2: -1]
+        weights = [qmd.weights[0] for qmd in self.qmd]
+        return weights
 
     def get_config(self):
         config = {
-            "dim_x": self.dim_x
+            "dim_x": self.dim_x,
+            "num_classes": self.num_classes
         }
         base_config = super().get_config()
         return {**base_config, **config}

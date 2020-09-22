@@ -182,7 +182,6 @@ class QMDensitySGD(tf.keras.Model):
             input_dim=input_dim,
             dim=dim_x, gamma=gamma, random_state=random_state)
         self.qmd = layers.QMeasureDensityEig(dim_x=dim_x, num_eig=num_eig)
-        self.cp = layers.CrossProduct()
         self.num_eig = num_eig
         self.dim_x = dim_x
         self.gamma = gamma
@@ -303,7 +302,6 @@ class QMKDClassifierSGD(tf.keras.Model):
         self.qmd = []
         for _ in range(num_classes):
             self.qmd.append(layers.QMeasureDensityEig(dim_x, num_eig))
-        self.cp = layers.CrossProduct()
         self.gamma = gamma
         self.random_state = random_state
 

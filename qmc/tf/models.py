@@ -243,7 +243,7 @@ class QMKDClassifier(tf.keras.Model):
         psi = self.fm_x(x) # shape (bs, dim_x)
         rho = self.cp([psi, tf.math.conj(psi)]) # shape (bs, dim_x, dim_x)
         ohy = tf.keras.backend.one_hot(y, self.num_classes)
-        ohy = tf.squeeze(ohy)
+        ohy = tf.reshape(ohy, (-1, self.num_classes))
         num_samples = tf.squeeze(tf.reduce_sum(ohy, axis=0))
         ohy = tf.expand_dims(ohy, axis=-1) 
         ohy = tf.expand_dims(ohy, axis=-1) # shape (bs, num_classes, 1, 1)

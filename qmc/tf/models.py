@@ -83,11 +83,14 @@ class QMClassifierSGD(tf.keras.Model):
         gamma: float. Gamma parameter of the RBF kernel to be approximated.
         random_state: random number generator seed.
     """
-    def __init__(self, input_dim, dim_x, dim_y, num_eig=0, gamma=1, random_state=None):
+    def __init__(self, input_dim, dim_x, dim_y, num_eig=0, gamma=1, random_state=None, fm_x=None):
         super(QMClassifierSGD, self).__init__()
-        self.fm_x = layers.QFeatureMapRFF(
-            input_dim=input_dim,
-            dim=dim_x, gamma=gamma, random_state=random_state)
+        if fm_x is None:
+            self.fm_x = layers.QFeatureMapORF(
+                input_dim=input_dim,
+                dim=dim_x, gamma=gamma, random_state=random_state)
+        else:
+            self.fm_x = fm_x
         self.qm = layers.QMeasureClassifEig(dim_x=dim_x, dim_y=dim_y, num_eig=num_eig)
         self.dm2dist = layers.DensityMatrix2Dist()
         self.dim_x = dim_x
@@ -176,11 +179,14 @@ class QMDensitySGD(tf.keras.Model):
         gamma: float. Gamma parameter of the RBF kernel to be approximated.
         random_state: random number generator seed.
     """
-    def __init__(self, input_dim, dim_x, num_eig=0, gamma=1, random_state=None):
+    def __init__(self, input_dim, dim_x, num_eig=0, gamma=1, random_state=None, fm_x=None):
         super(QMDensitySGD, self).__init__()
-        self.fm_x = layers.QFeatureMapRFF(
-            input_dim=input_dim,
-            dim=dim_x, gamma=gamma, random_state=random_state)
+        if fm_x is None:
+            self.fm_x = layers.QFeatureMapORF(
+                input_dim=input_dim,
+                dim=dim_x, gamma=gamma, random_state=random_state)
+        else:
+            self.fm_x = fm_x
         self.qmd = layers.QMeasureDensityEig(dim_x=dim_x, num_eig=num_eig)
         self.num_eig = num_eig
         self.dim_x = dim_x
@@ -292,11 +298,14 @@ class QMKDClassifierSGD(tf.keras.Model):
         gamma: float. Gamma parameter of the RBF kernel to be approximated
         random_state: random number generator seed
     """
-    def __init__(self, input_dim, dim_x, num_classes, num_eig=0, gamma=1, random_state=None):
+    def __init__(self, input_dim, dim_x, num_classes,  num_eig=0, gamma=1, random_state=None, fm_x=None):
         super(QMKDClassifierSGD, self).__init__()
-        self.fm_x = layers.QFeatureMapRFF(
-            input_dim=input_dim,
-            dim=dim_x, gamma=gamma, random_state=random_state)
+        if fm_x is None:
+            self.fm_x = layers.QFeatureMapORF(
+                input_dim=input_dim,
+                dim=dim_x, gamma=gamma, random_state=random_state)
+        else:
+            self.fm_x = fm_x
         self.dim_x = dim_x
         self.num_classes = num_classes
         self.qmd = []

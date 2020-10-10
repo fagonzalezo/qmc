@@ -330,3 +330,112 @@ class QMKDClassifierSGD(tf.keras.Model):
         }
         base_config = super().get_config()
         return {**base_config, **config}
+
+class QMRegressor(tf.keras.Model):
+    """
+    A Quantum Measurement Regression model.
+    Arguments:
+        fm_x: Quantum feature map layer for inputs
+        fm_y: Quantum feature map layer for outputs
+        dim_x: dimension of the input quantum feature map
+        dim_y: dimension of the output quantum feature map
+    """
+    def __init__(self, fm_x, fm_y, dim_x, dim_y):
+        super(QMRegressor, self).__init__()
+        self.fm_x = fm_x
+        self.fm_y = fm_y
+        self.qm = layers.QMeasureClassif(dim_x=dim_x, dim_y=dim_y)
+        self.dmregress = layers.DensityMatrixRegression()
+        self.cp1 = layers.CrossProduct()
+        self.cp2 = layers.CrossProduct()
+        self.num_samples = tf.Variable(
+            initial_value=0.,
+            trainable=False     
+            )
+
+    def call(self, inputs):
+        psi_x = self.fm_x(inputs)
+        rho_y = self.qm(psi_x)
+        mean_var = self.dmregress(rho_y)
+        return mean_var
+
+    @tf.function
+    def call_train(self, x, y):
+        if not self.qm.built:
+            self.call(x)
+        psi_x = self.fm_x(x)
+        psi_y = self.fm_y(y)
+        psi = self.cp1([psi_x, psi_y])
+        rho = self.cp2([psi, tf.math.conj(psi)])
+        num_samples = tf.cast(tf.shape(x)[0], rho.dtype)
+        rho = tf.reduce_sum(rho, axis=0)
+        self.num_samples.assign_add(num_samples)
+        return rho
+
+    def train_step(self, data):
+        x, y = data
+        rho = self.call_train(x, y)
+        self.qm.weights[0].assign_add(rho)
+        return {}
+
+    def fit(self, *args, **kwargs):
+        result = super(QMRegressor, self).fit(*args, **kwargs)
+        self.qm.weights[0].assign(self.qm.weights[0] / self.num_samples)
+        return result
+
+    def get_rho(self):
+        return self.weights[2]
+
+    def get_config(self):
+        config = {
+            "dim_x": self.dim_x,
+            "dim_y": self.dim_y
+        }
+        base_config = super().get_config()
+        return {**base_config, **config}
+
+class QMRegressorSGD(tf.keras.Model):
+    """
+    A Quantum Measurement Regressor model trainable using
+    gradient descent.
+
+    Arguments:
+        input_dim: dimension of the input
+        dim_x: dimension of the input quantum feature map
+        dim_y: dimension of the output quantum feature map
+        num_eig: Number of eigenvectors used to represent the density matrix. 
+                 a value of 0 or less implies num_eig = dim_x
+        gamma: float. Gamma parameter of the RBF kernel to be approximated.
+        random_state: random number generator seed.
+    """
+    def __init__(self, input_dim, dim_x, dim_y, num_eig=0, gamma=1, random_state=None):
+        super(QMRegressorSGD, self).__init__()
+        self.fm_x = layers.QFeatureMapRFF(
+            input_dim=input_dim,
+            dim=dim_x, gamma=gamma, random_state=random_state)
+        self.qm = layers.QMeasureClassifEig(dim_x=dim_x, dim_y=dim_y, num_eig=num_eig)
+        self.dmregress = layers.DensityMatrixRegression()
+        self.dim_x = dim_x
+        self.dim_y = dim_y
+        self.gamma = gamma
+        self.random_state = random_state
+
+    def call(self, inputs):
+        psi_x = self.fm_x(inputs)
+        rho_y = self.qm(psi_x)
+        mean_var = self.dmregress(rho_y)
+        return mean_var
+
+    def set_rho(self, rho):
+        return self.qm.set_rho(rho)
+
+    def get_config(self):
+        config = {
+            "dim_x": self.dim_x,
+            "dim_y": self.dim_y,
+            "num_eig": self.num_eig,
+            "gamma": self.gamma,
+            "random_state": self.random_state
+        }
+        base_config = super().get_config()
+        return {**base_config, **config}

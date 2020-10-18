@@ -564,13 +564,11 @@ class QMeasureDensityEig(tf.keras.layers.Layer):
         eig_val = eig_val / tf.reduce_sum(eig_val)
         rho_h = tf.matmul(eig_vec,
                           tf.linalg.diag(tf.sqrt(eig_val)))
-        rho = tf.matmul(
-            rho_h,
-            tf.transpose(rho_h, conjugate=True))
+        rho_h = tf.matmul(oper, rho_h)
         rho_res = tf.einsum(
-            '...ik, km, ...mi -> ...',
-            oper, rho, oper,
-            optimize='optimal')  # shape (b, nx, ny, nx, ny)
+            '...ik, ki... -> ...',
+            rho_h, tf.transpose(rho_h, conjugate=True), 
+            optimize='optimal') # shape (b,)
         return rho_res
 
     def set_rho(self, rho):
@@ -687,3 +685,46 @@ class DensityMatrix2Dist(tf.keras.layers.Layer):
 
     def compute_output_shape(self, input_shape):
         return tuple(input_shape[1])
+
+class DensityMatrixRegression(tf.keras.layers.Layer):
+    """
+    Calculates the expected value and variance of a measure on a 
+    density matrix. The measure associates evenly distributed values 
+    between 0 and 1 to the different n basis states.
+
+    Input shape:
+        A tensor with shape (batch_size, n, n)
+    Output shape:
+        (batch_size, n, 2)
+    Arguments:
+    """
+
+    @typechecked
+    def __init__(
+            self,
+            **kwargs
+    ):
+        super().__init__(**kwargs)
+
+
+    def build(self, input_shape):
+        if len(input_shape) != 3 or input_shape[1] != input_shape[2]:
+            raise ValueError('A `DensityMatrix2Dist` layer should be '
+                             'called with a tensor of shape '
+                             '(batch_size, n, n)')
+        self.vals = tf.constant(tf.linspace(0., 1., input_shape[1]), dtype=tf.float32)
+        self.vals2 = self.vals ** 2
+        self.built = True
+
+    def call(self, inputs):
+        if len(inputs.shape) != 3 or inputs.shape[1] != inputs.shape[2]:
+            raise ValueError('A `DensityMatrix2Dist` layer should be '
+                             'called with a tensor of shape '
+                             '(batch_size, n, n)')
+        mean = tf.einsum('...ii,i->...', inputs, self.vals, optimize='optimal')
+        mean2 = tf.einsum('...ii,i->...', inputs, self.vals2, optimize='optimal')
+        var = mean2 - mean ** 2
+        return tf.stack([mean, var], axis = -1)
+
+    def compute_output_shape(self, input_shape):
+        return (input_shape[1], 2)

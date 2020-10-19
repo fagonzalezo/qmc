@@ -4,6 +4,9 @@ Quantum Measurement Classfiication Models
 
 import tensorflow as tf
 import qmc.tf.layers as layers
+from sklearn.metrics import accuracy_score
+from tensorflow.python.keras.engine import data_adapter
+
 
 class QMClassifier(tf.keras.Model):
     """
@@ -339,3 +342,48 @@ class QMKDClassifierSGD(tf.keras.Model):
         }
         base_config = super().get_config()
         return {**base_config, **config}
+
+    def test_step(self, data):
+        """The logic for one evaluation step.
+
+        This method can be overridden to support custom evaluation logic.
+        This method is called by `Model.make_test_function`.
+
+        This function should contain the mathemetical logic for one step of
+        evaluation.
+        This typically includes the forward pass, loss calculation, and metrics
+        updates.
+
+        Configuration details for *how* this logic is run (e.g. `tf.function` and
+        `tf.distribute.Strategy` settings), should be left to
+        `Model.make_test_function`, which can also be overridden.
+
+        Arguments:
+          data: A nested structure of `Tensor`s.
+
+        Returns:
+          A `dict` containing values that will be passed to
+          `tf.keras.callbacks.CallbackList.on_train_batch_end`. Typically, the
+          values of the `Model`'s metrics are returned.
+        """
+        data = data_adapter.expand_1d(data)
+        x, y, sample_weight = data_adapter.unpack_x_y_sample_weight(data)
+
+        y_pred = self(x, training=False)
+
+        y_bin = tf.reshape(tf.keras.backend.one_hot(y, self.num_classes), (-1, self.num_classes))
+
+        # Updates stateful loss metrics.
+        self.compiled_loss(
+            y_bin, y_pred, sample_weight, regularization_losses=self.losses)
+
+        self.compiled_metrics.update_state(y_bin, y_pred, sample_weight)
+
+        metrics_results = {m.name: m.result() for m in self.metrics}
+
+        non_zero = tf.math.count_nonzero(tf.reduce_sum(tf.math.subtract(y_bin, y_pred), axis=1))
+
+        metrics_results['accuracy'] = non_zero / tf.cast(tf.shape(y_bin)[0], tf.int64)
+
+        return metrics_results
+

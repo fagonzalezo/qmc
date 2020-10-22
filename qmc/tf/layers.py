@@ -566,8 +566,8 @@ class QMeasureDensityEig(tf.keras.layers.Layer):
                           tf.linalg.diag(tf.sqrt(eig_val)))
         rho_h = tf.matmul(oper, rho_h)
         rho_res = tf.einsum(
-            '...ik, ki... -> ...',
-            rho_h, tf.transpose(rho_h, conjugate=True), 
+            '...ik, ...ik -> ...',
+            rho_h, tf.math.conj(rho_h), 
             optimize='optimal') # shape (b,)
         return rho_res
 

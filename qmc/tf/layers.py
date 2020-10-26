@@ -488,13 +488,11 @@ class QMeasureDensityEig(tf.keras.layers.Layer):
         eig_val = eig_val / tf.reduce_sum(eig_val)
         rho_h = tf.matmul(eig_vec,
                           tf.linalg.diag(tf.sqrt(eig_val)))
-        rho = tf.matmul(
-            rho_h,
-            tf.transpose(rho_h, conjugate=True))
+        rho_h = tf.matmul(oper, rho_h)
         rho_res = tf.einsum(
-            '...ik, km, ...mi -> ...',
-            oper, rho, oper,
-            optimize='optimal')  # shape (b, nx, ny, nx, ny)
+            '...ik, ...ik -> ...',
+            rho_h, tf.math.conj(rho_h), 
+            optimize='optimal') # shape (b,)
         return rho_res
 
     def set_rho(self, rho):

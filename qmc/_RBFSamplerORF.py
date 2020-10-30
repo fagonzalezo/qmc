@@ -103,7 +103,7 @@ class RBFSamplerORF(TransformerMixin, BaseEstimator):
         for i in range(round(self.n_components / n_features)+1):
             random_gaussian_weights_ = random_state.normal(size=(n_features, n_features))
             q, _ = np.linalg.qr(random_gaussian_weights_, mode='reduced')
-            random_chi_weights = np.random.chisquare(df=n_features, size=(n_features))
+            random_chi_weights = random_state.chisquare(df=n_features, size=(n_features))
             random_chi_weights = np.sqrt(random_chi_weights)
 
             random_chi_weights = np.diag(random_chi_weights)

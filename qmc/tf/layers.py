@@ -478,19 +478,15 @@ class QMeasureDensityEig(tf.keras.layers.Layer):
         self.built = True
 
     def call(self, inputs):
-        oper = tf.einsum(
-            '...i,...j->...ij',
-            inputs, tf.math.conj(inputs),
-            optimize='optimal') # shape (b, nx, nx)
         norms = tf.expand_dims(tf.linalg.norm(self.eig_vec, axis=0), axis=0)
         eig_vec = self.eig_vec / norms
         eig_val = tf.keras.activations.relu(self.eig_val)
         eig_val = eig_val / tf.reduce_sum(eig_val)
         rho_h = tf.matmul(eig_vec,
                           tf.linalg.diag(tf.sqrt(eig_val)))
-        rho_h = tf.matmul(oper, rho_h)
+        rho_h = tf.matmul(tf.math.conj(inputs), rho_h)
         rho_res = tf.einsum(
-            '...ik, ...ik -> ...',
+            '...i, ...i -> ...',
             rho_h, tf.math.conj(rho_h), 
             optimize='optimal') # shape (b,)
         return rho_res

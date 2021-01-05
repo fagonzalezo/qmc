@@ -595,6 +595,120 @@ class QMeasureDensityEig(tf.keras.layers.Layer):
     def compute_output_shape(self, input_shape):
         return (1,)
 
+def complex_initializer(base_initializer):
+    """
+    Complex Initializer to use in ComplexQMeasureDensityEig
+    taken from https://github.com/tensorflow/tensorflow/issues/17097
+    """
+    f = base_initializer()
+
+    def initializer(*args, dtype=tf.complex64, **kwargs):
+        real = f(*args, **kwargs)
+        imag = f(*args, **kwargs)
+        return tf.complex(real, imag)
+
+    return initializer
+
+class ComplexQMeasureDensityEig(tf.keras.layers.Layer):
+    """Quantum measurement layer for density estimation with complex terms.
+    Represents the density matrix using a factorization:
+    
+    `dm = tf.matmul(V, tf.transpose(V, conjugate=True))`
+
+    This rerpesentation is ameanable to gradient-based learning
+
+    Input shape:
+        (batch_size, dim_x)
+        where dim_x is the dimension of the input state
+    Output shape:
+        (batch_size, 1)
+    Arguments:
+        dim_x: int. the dimension of the input state
+        num_eig: Number of eigenvectors used to represent the density matrix
+    """
+
+    @typechecked
+    def __init__(
+            self,
+            dim_x: int,
+            num_eig: int =0,
+            **kwargs
+    ):
+        super().__init__(**kwargs)
+        self.dim_x = dim_x
+        if num_eig < 1:
+            num_eig = dim_x
+        self.num_eig = num_eig
+
+    def build(self, input_shape):
+        if (not input_shape[1] is None) and input_shape[1] != self.dim_x:
+            raise ValueError(
+                f'Input dimension must be (batch_size, {self.dim_x})')
+        with tf.device('cpu:0'):
+          self.eig_vec = self.add_weight(
+              "eig_vec",
+              shape=(self.dim_x, self.num_eig),
+              dtype=tf.complex64,
+              initializer=complex_initializer(tf.random_normal_initializer),
+              trainable=True)
+        self.eig_val = self.add_weight(
+            "eig_val",
+            shape=(self.num_eig,),
+            initializer=tf.keras.initializers.random_normal(),
+            trainable=True)
+        axes = {i: input_shape[i] for i in range(1, len(input_shape))}
+        self.input_spec = tf.keras.layers.InputSpec(
+            ndim=len(input_shape), axes=axes)
+        self.built = True
+
+    def call(self, inputs):
+        inputs = tf.cast(inputs, tf.complex64)
+        norms = tf.expand_dims(tf.linalg.norm(self.eig_vec, axis=0), axis=0)
+        eig_vec = self.eig_vec / norms
+        eig_val = tf.keras.activations.relu(self.eig_val)
+        eig_val = eig_val / tf.reduce_sum(eig_val)
+        rho_h = tf.matmul(eig_vec,  
+                          tf.cast(tf.linalg.diag(tf.sqrt(eig_val)), dtype=tf.complex64))
+        rho_h = tf.matmul(tf.math.conj(inputs), rho_h)
+        rho_res = tf.einsum(
+            '...i, ...i -> ...',
+            rho_h, tf.math.conj(rho_h), 
+            optimize='optimal') # shape (b,)
+        rho_res = tf.cast(rho_res, tf.float32)
+        return rho_res
+
+    def set_rho(self, rho):
+        """
+        Sets the value of self.rho_h using an eigendecomposition.
+
+        Arguments:
+            rho: a tensor of shape (dim_x, dim_x)
+        Returns:
+            e: list of eigenvalues in non-decreasing order
+        """
+        if (len(rho.shape.as_list()) != 2 or
+                rho.shape[0] != self.dim_x or
+                rho.shape[1] != self.dim_x):
+            raise ValueError(
+                f'rho shape must be ({self.dim_x}, {self.dim_x})')
+        if not self.built:
+            self.build((None, self.dim_x))        
+        e, v = tf.linalg.eigh(rho)
+        self.eig_vec.assign(v[:, -self.num_eig:])
+        self.eig_val.assign(e[-self.num_eig:])
+        return e
+
+    def get_config(self):
+        config = {
+            "dim_x": self.dim_x,
+            "num_eig ": self.num_eig
+        }
+        base_config = super().get_config()
+        return {**base_config, **config}
+
+    def compute_output_shape(self, input_shape):
+        return (1,)
+
 ##### Util layers
 
 class CrossProduct(tf.keras.layers.Layer):

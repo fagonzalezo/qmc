@@ -205,7 +205,7 @@ class QMDensitySGD(tf.keras.Model):
         base_config = super().get_config()
         return {**base_config, **config}
 
-class QMKDClassifier(tf.keras.Model):
+class DMKDClassifier(tf.keras.Model):
     """
     A Quantum Measurement Kernel Density Classifier model.
     Arguments:
@@ -334,7 +334,7 @@ class DMKDClassifierSGD(tf.keras.Model):
 class ComplexDMKDClassifierSGD(tf.keras.Model):
     """
     A Quantum Measurement Kernel Density Classifier model trainable using
-    gradient descent.
+    gradient descent using complex random fourier features.
 
     Arguments:
         input_dim: dimension of the input

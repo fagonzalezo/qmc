@@ -230,20 +230,15 @@ class QFeatureMapComplexRFF(tf.keras.layers.Layer):
         rbf_sampler.fit(x)
         self.rff_weights = tf.Variable(
             initial_value=rbf_sampler.random_weights_,
-            dtype=tf.float32, # Changed float32 to float 64
+            dtype=tf.float32,
             trainable=True,
             name="rff_weights")
-        self.offset = tf.Variable(
-            initial_value=rbf_sampler.random_offset_,
-            dtype=tf.float32, # Changed float32 to float 64
-            trainable=True,
-            name="offset")
         self.built = True
 
     def call(self, inputs):
         vals = tf.matmul(inputs, self.rff_weights)
         vals = tf.complex(tf.cos(vals), tf.sin(vals))
-        vals = vals * tf.cast(tf.sqrt(1. / self.dim), tf.complex64) # changed from complex64 to complex128
+        vals = vals * tf.cast(tf.sqrt(1. / self.dim), tf.complex64)
         norms = tf.linalg.norm(vals, axis=1)
         psi = vals / tf.expand_dims(norms, axis=-1)
         return psi

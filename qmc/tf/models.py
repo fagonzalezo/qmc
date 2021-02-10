@@ -278,7 +278,7 @@ class QMKDClassifier(tf.keras.Model):
         base_config = super().get_config()
         return {**base_config, **config}
 
-class QMKDClassifierSGD(tf.keras.Model):
+class DMKDClassifierSGD(tf.keras.Model):
     """
     A Quantum Measurement Kernel Density Classifier model trainable using
     gradient descent.
@@ -293,7 +293,7 @@ class QMKDClassifierSGD(tf.keras.Model):
         random_state: random number generator seed
     """
     def __init__(self, input_dim, dim_x, num_classes, num_eig=0, gamma=1, random_state=None):
-        super(QMKDClassifierSGD, self).__init__()
+        super(DMKDClassifierSGD, self).__init__()
         self.fm_x = layers.QFeatureMapRFF(
             input_dim=input_dim,
             dim=dim_x, gamma=gamma, random_state=random_state)
@@ -331,7 +331,7 @@ class QMKDClassifierSGD(tf.keras.Model):
         base_config = super().get_config()
         return {**base_config, **config}
 
-class ComplexQMKDClassifierSGD(tf.keras.Model):
+class ComplexDMKDClassifierSGD(tf.keras.Model):
     """
     A Quantum Measurement Kernel Density Classifier model trainable using
     gradient descent.
@@ -346,7 +346,7 @@ class ComplexQMKDClassifierSGD(tf.keras.Model):
         random_state: random number generator seed
     """
     def __init__(self, input_dim, dim_x, num_classes, num_eig=0, gamma=1, random_state=None):
-        super(ComplexQMKDClassifierSGD, self).__init__()
+        super(ComplexDMKDClassifierSGD, self).__init__()
         self.fm_x = layers.QFeatureMapComplexRFF(
             input_dim=input_dim,
             dim=dim_x, gamma=gamma, random_state=random_state)

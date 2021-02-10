@@ -214,7 +214,7 @@ class DMKDClassifier(tf.keras.Model):
         num_classes: int number of classes
     """
     def __init__(self, fm_x, dim_x, num_classes=2):
-        super(QMKDClassifier, self).__init__()
+        super(DMKDClassifier, self).__init__()
         self.fm_x = fm_x
         self.dim_x = dim_x
         self.num_classes = num_classes
@@ -260,7 +260,7 @@ class DMKDClassifier(tf.keras.Model):
         return {}
 
     def fit(self, *args, **kwargs):
-        result = super(QMKDClassifier, self).fit(*args, **kwargs)
+        result = super(DMKDClassifier, self).fit(*args, **kwargs)
         for i in range(self.num_classes):
             self.qmd[i].weights[0].assign(self.qmd[i].weights[0] /
                                           self.num_samples[i])

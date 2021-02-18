@@ -3,7 +3,7 @@ Quantum Measurement Classfiication Models
 '''
 
 import tensorflow as tf
-import qmc.tf.layers as layers
+from . import layers
 
 class QMClassifier(tf.keras.Model):
     """

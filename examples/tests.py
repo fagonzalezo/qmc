@@ -10,11 +10,21 @@ from qmc.tf import layers
 from qmc.tf import models
 
 
+data_x = tf.constant([[1, 2],
+                   [0, 1],
+                   [3, 1],
+                   [0, 2]
+                  ]) 
+res = tf.one_hot(data_x, 4)
+
+fm_x = layers.QFeatureMapOneHot(4)
+print(fm_x(data_x))
+
 data_x = tf.constant([[0., 0.],
                    [0., 1,],
                    [1., 0,],
                    [1., 1,]
-                  ])
+                  ]) 
 data_y = tf.constant([[0], [1], [1], [0]])
 fm_x = layers.QFeatureMapRFF(input_dim=2, dim=10, gamma=4, random_state=10)
 qmd = models.QMDensity(fm_x)

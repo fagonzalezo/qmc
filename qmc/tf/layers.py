@@ -885,6 +885,52 @@ def complex_initializer(base_initializer):
 
     return initializer
 
+class ComplexQMeasureDensity(tf.keras.layers.Layer):
+    """Quantum measurement layer for density estimation with complex values.
+    Input shape:
+        (batch_size, dim_x)
+        where dim_x is the dimension of the input state
+    Output shape:
+        (batch_size, 1)
+    Arguments:
+        dim_x: int. the dimension of the input  state
+    """
+
+    @typechecked
+    def __init__(
+            self,
+            dim_x: int,
+            **kwargs
+    ):
+        self.dim_x = dim_x
+        super().__init__(**kwargs)
+
+    def build(self, input_shape):
+        if (not input_shape[1] is None) and input_shape[1] != self.dim_x:
+            raise ValueError(
+                f'Input dimension must be (batch_size, {self.dim_x})')
+        with tf.device('cpu:0'):
+          self.rho = self.add_weight(
+              "rho",
+              shape=(self.dim_x, self.dim_x),
+              dtype=tf.complex64,
+              initializer=complex_initializer(tf.keras.initializers.Zeros),
+              trainable=True)
+        axes = {i: input_shape[i] for i in range(1, len(input_shape))}
+        self.input_spec = tf.keras.layers.InputSpec(
+            ndim=len(input_shape), axes=axes)
+        self.built = True
+
+    def call(self, inputs):
+        rho_res = tf.einsum(
+            '...k, km, ...m -> ...',
+            tf.math.conj(inputs), self.rho, inputs,
+            optimize='optimal')  # shape (b,)
+        return rho_res
+
+    def compute_output_shape(self, input_shape):
+        return (1,)
+
 class ComplexQMeasureDensityEig(tf.keras.layers.Layer):
     """Quantum measurement layer for density estimation with complex terms.
     Represents the density matrix using a factorization:

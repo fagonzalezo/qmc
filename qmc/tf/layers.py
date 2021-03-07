@@ -389,10 +389,19 @@ class QMeasureClassifEig(tf.keras.layers.Layer):
         eig_vec = self.eig_vec / norms
         eig_val = tf.keras.activations.relu(self.eig_val)
         eig_val = eig_val / tf.reduce_sum(eig_val)
-        rho_h = tf.matmul(eig_vec, tf.linalg.diag(tf.sqrt(eig_val))) 
-        rho_h = tf.reshape(rho_h, (self.dim_x, self.dim_y, self.num_eig))
-        rho_h = tf.einsum('...k, klm -> ...lm', inputs, rho_h, optimize='optimal') # shape (b, ny, ne)
-        rho_y = tf.einsum('...ik, ...jk -> ...ij', rho_h, rho_h, optimize='optimal') # shape (b, ny, ny)
+        rho_h = tf.matmul(eig_vec,
+                          tf.linalg.diag(tf.sqrt(eig_val)))
+        rho_h = tf.reshape(
+            rho_h, 
+            (self.dim_x, self.dim_y, self.num_eig))
+        rho_h = tf.einsum(
+            '...k, klm -> ...lm',
+            inputs, rho_h, 
+            optimize='optimal') 
+        rho_y = tf.einsum(
+            '...ik, ...jk -> ...ij',
+            rho_h, rho_h, 
+            optimize='optimal')
         trace_val = tf.einsum('...ii->...', rho_y, optimize='optimal')
         trace_val = tf.expand_dims(trace_val, axis=-1)
         trace_val = tf.expand_dims(trace_val, axis=-1)

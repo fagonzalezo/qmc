@@ -361,7 +361,7 @@ class QMeasureClassifEig(tf.keras.layers.Layer):
         self.dim_x = dim_x
         self.dim_y = dim_y
         if num_eig < 1:
-            num_eig = dim_x
+            num_eig = dim_x * dim_y
         self.num_eig = num_eig
 
     def build(self, input_shape):

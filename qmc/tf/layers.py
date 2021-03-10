@@ -347,7 +347,6 @@ class QMeasureClassifEig(tf.keras.layers.Layer):
     Arguments:
         dim_x: int. the dimension of the input state
         dim_y: int. the dimension of the output state
-        num_eig: Number of eigenvectors used to represent the density matrix
     """
 
     @typechecked

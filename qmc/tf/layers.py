@@ -347,7 +347,6 @@ class QMeasureClassifEig(tf.keras.layers.Layer):
     Arguments:
         dim_x: int. the dimension of the input state
         dim_y: int. the dimension of the output state
-        num_eig: Number of eigenvectors used to represent the density matrix
     """
 
     @typechecked
@@ -362,7 +361,7 @@ class QMeasureClassifEig(tf.keras.layers.Layer):
         self.dim_x = dim_x
         self.dim_y = dim_y
         if num_eig < 1:
-            num_eig = dim_x * dim_y
+            num_eig = dim_x
         self.num_eig = num_eig
 
     def build(self, input_shape):
@@ -401,7 +400,7 @@ class QMeasureClassifEig(tf.keras.layers.Layer):
         rho_y = tf.einsum(
             '...ik, ...jk -> ...ij',
             rho_h, rho_h, 
-            optimize='optimal')
+            optimize='optimal') # shape (b,)
         trace_val = tf.einsum('...ii->...', rho_y, optimize='optimal')
         trace_val = tf.expand_dims(trace_val, axis=-1)
         trace_val = tf.expand_dims(trace_val, axis=-1)

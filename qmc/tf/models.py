@@ -721,7 +721,7 @@ class ComplexQMRegressorSGD(tf.keras.Model):
     """
     def __init__(self, input_dim, dim_x, dim_y, num_eig=0, gamma=1, random_state=None):
         super(ComplexQMRegressorSGD, self).__init__()
-        self.fm_x = layers.QFeatureMapRFF(
+        self.fm_x = layers.QFeatureMapComplexRFF(
             input_dim=input_dim,
             dim=dim_x, gamma=gamma, random_state=random_state)
         self.qm = layers.ComplexQMeasureClassifEig(dim_x=dim_x, dim_y=dim_y, num_eig=num_eig)

@@ -191,7 +191,6 @@ class ComplexQMClassifierSGD(tf.keras.Model):
         psi_x = self.fm_x(inputs)
         rho_y = self.qm(psi_x)
         probs = self.dm2dist(rho_y)
-        print(probs.dtype)
         return probs
 
     def set_rho(self, rho):

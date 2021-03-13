@@ -181,7 +181,7 @@ class ComplexQMClassifierSGD(tf.keras.Model):
             input_dim=input_dim,
             dim=dim_x, gamma=gamma, random_state=random_state)
         self.qm = layers.ComplexQMeasureClassifEig(dim_x=dim_x, dim_y=dim_y, num_eig=num_eig)
-        self.dm2dist = layers.DensityMatrix2Dist()
+        self.dm2dist = layers.ComplexDensityMatrix2Dist()
         self.dim_x = dim_x
         self.dim_y = dim_y
         self.gamma = gamma

@@ -1244,6 +1244,44 @@ class DensityMatrix2Dist(tf.keras.layers.Layer):
     def compute_output_shape(self, input_shape):
         return tuple(input_shape[1])
 
+class ComplexDensityMatrix2Dist(tf.keras.layers.Layer):
+    """Extracts a probability distribution from a complex density matrix.
+
+    Input shape:
+        A tensor with shape (batch_size, n, n)
+    Output shape:
+        (batch_size, n)
+    Arguments:
+    """
+
+    @typechecked
+    def __init__(
+            self,
+            **kwargs
+    ):
+        super().__init__(**kwargs)
+
+
+    def build(self, input_shape):
+        if len(input_shape) != 3 or input_shape[1] != input_shape[2]:
+            raise ValueError('A `DensityMatrix2Dist` layer should be '
+                             'called with a tensor of shape '
+                             '(batch_size, n, n)')
+        self.built = True
+
+    def call(self, inputs):
+        if len(inputs.shape) != 3 or inputs.shape[1] != inputs.shape[2]:
+            raise ValueError('A `DensityMatrix2Dist` layer should be '
+                             'called with a tensor of shape '
+                             '(batch_size, n, n)')
+        cp = tf.einsum('...ii->...i', inputs, optimize='optimal')
+        cp = tf.cast(cp, tf.float32)
+        return cp
+
+    def compute_output_shape(self, input_shape):
+        return tuple(input_shape[1])
+
+
 class DensityMatrixRegression(tf.keras.layers.Layer):
     """
     Calculates the expected value and variance of a measure on a 

@@ -104,7 +104,7 @@ class QFeatureMapOneHot(tf.keras.layers.Layer):
 
     def call(self, inputs):
         out = tf.one_hot(tf.cast(inputs, dtype=tf.int32),
-                         self.num_classes)
+                         self.num_classes, on_value=1., off_value=0.)
         b_size = tf.shape(out)[0]
         t_psi = out[:, 0, :]
         for i in range(1, out.shape[1]):
@@ -408,124 +408,7 @@ class QMeasureClassif(tf.keras.layers.Layer):
 class QMeasureClassifEig(tf.keras.layers.Layer):
     """Quantum measurement layer for classification.
     Represents the density matrix using a factorization:
-    
-    `dm = tf.matmul(V, tf.transpose(V, conjugate=True))`
-    This rerpesentation is ameanable to gradient-based learning.
-    Input shape:
-        (batch_size, dim_x)
-        where dim_x is the dimension of the input state
-    Output shape:
-        (batch_size, dim_y, dim_y)
-        where dim_y is the dimension of the output state
-    Arguments:
-        dim_x: int. the dimension of the input state
-        dim_y: int. the dimension of the output state
-        num_eig: Number of eigenvectors used to represent the density matrix
-    """
 
-    @typechecked
-    def __init__(
-            self,
-            dim_x: int,
-            dim_y: int = 2,
-            num_eig: int = 0,
-            **kwargs
-    ):
-        super().__init__(**kwargs)
-        self.dim_x = dim_x
-        self.dim_y = dim_y
-        if num_eig < 1:
-            num_eig = dim_x * dim_y
-        self.num_eig = num_eig
-
-    def build(self, input_shape):
-        if input_shape[1] != self.dim_x:
-            raise ValueError(
-                f'Input dimension must be (batch_size, {self.dim_x})')
-        self.eig_vec = self.add_weight(
-            "eig_vec",
-            shape=(self.dim_x * self.dim_y, self.num_eig),
-            initializer=tf.keras.initializers.random_normal(),
-            trainable=True)
-        self.eig_val = self.add_weight(
-            "eig_val",
-            shape=(self.num_eig,),
-            initializer=tf.keras.initializers.random_normal(),
-            trainable=True)
-        axes = {i: input_shape[i] for i in range(1, len(input_shape))}
-        self.input_spec = tf.keras.layers.InputSpec(
-            ndim=len(input_shape), axes=axes)
-        self.built = True
-
-    def call(self, inputs):
-        oper = tf.einsum(
-            '...i,...j->...ij',
-            inputs, tf.math.conj(inputs),
-            optimize='optimal') # shape (b, nx, nx)
-        norms = tf.expand_dims(tf.linalg.norm(self.eig_vec, axis=0), axis=0)
-        eig_vec = self.eig_vec / norms
-        eig_val = tf.keras.activations.relu(self.eig_val)
-        eig_val = eig_val / tf.reduce_sum(eig_val)
-        rho_h = tf.matmul(eig_vec,
-                          tf.linalg.diag(tf.sqrt(eig_val)))
-        rho = tf.matmul(
-            rho_h, 
-            tf.transpose(rho_h, conjugate=True))
-        rho = tf.reshape(
-            rho, 
-            (self.dim_x, self.dim_y, self.dim_x, self.dim_y))
-        rho_res = tf.einsum(
-            '...ik, klmn, ...mo -> ...ilon',
-            oper, rho, oper,
-            optimize='optimal')  # shape (b, nx, ny, ny, nx)
-        trace_val = tf.einsum('...ijij->...', rho_res, optimize='optimal') # shape (b)
-        trace_val = tf.expand_dims(trace_val, axis=-1)
-        trace_val = tf.expand_dims(trace_val, axis=-1)
-        trace_val = tf.expand_dims(trace_val, axis=-1)
-        trace_val = tf.expand_dims(trace_val, axis=-1)
-        rho_res = rho_res / trace_val
-        rho_y = tf.einsum('...ijik->...jk', rho_res, optimize='optimal') # shape (b, ny, ny)
-        return rho_y
-
-    def set_rho(self, rho):
-        """
-        Sets the value of self.rho_h using an eigendecomposition.
-        Arguments:
-            rho: a tensor of shape (dim_x, dim_y, dim_x, dim_y)
-        """
-        if (len(rho.shape.as_list()) != 4 or
-                rho.shape[0] != self.dim_x or
-                rho.shape[2] != self.dim_x or
-                rho.shape[1] != self.dim_y or
-                rho.shape[3] != self.dim_y):
-            raise ValueError(
-                f'rho shape must be ({self.dim_x}, {self.dim_y},'
-                f' {self.dim_x}, {self.dim_y})')
-        if not self.built:
-            self.build((None, self.dim_x))
-        rho_prime = tf.reshape(
-            rho, 
-            (self.dim_x * self.dim_y, self.dim_x * self.dim_y,))
-        e, v = tf.linalg.eigh(rho_prime)
-        self.eig_vec.assign(v[:, -self.num_eig:])
-        self.eig_val.assign(e[-self.num_eig:])
-        return e
-
-    def get_config(self):
-        config = {
-            "dim_x": self.dim_x,
-            "dim_y": self.dim_y
-        }
-        base_config = super().get_config()
-        return {**base_config, **config}
-
-    def compute_output_shape(self, input_shape):
-        return (self.dim_y, self.dim_y)
-
-class QMeasureClassifEigF(tf.keras.layers.Layer):
-    """Quantum measurement layer for classification.
-    Represents the density matrix using a factorization:
-    
     `dm = tf.matmul(V, tf.transpose(V, conjugate=True))`
 
     This rerpesentation is ameanable to gradient-based learning.
@@ -612,7 +495,7 @@ class QMeasureClassifEigF(tf.keras.layers.Layer):
         if not self.built:
             self.build((None, self.dim_x))
         rho_prime = tf.reshape(
-            rho, 
+            rho,
             (self.dim_x * self.dim_y, self.dim_x * self.dim_y,))
         e, v = tf.linalg.eigh(rho_prime)
         self.eig_vec.assign(v[:, -self.num_eig:])
@@ -633,10 +516,10 @@ class QMeasureClassifEigF(tf.keras.layers.Layer):
 class ComplexQMeasureClassifEig(tf.keras.layers.Layer):
     """Quantum measurement layer for classification.
     Represents the density matrix with complex values using a factorization:
-    
+
     `dm = tf.matmul(V, tf.transpose(V, conjugate=True))`
 
-    This rerpesentation is ameanable to gradient-based learning.
+    This rerpesentation is amenable to gradient-based learning.
 
     Input shape:
         (batch_size, dim_x)
@@ -670,12 +553,12 @@ class ComplexQMeasureClassifEig(tf.keras.layers.Layer):
             raise ValueError(
                 f'Input dimension must be (batch_size, {self.dim_x})')
         with tf.device('cpu:0'):
-          self.eig_vec = self.add_weight(
-              "eig_vec",
-              shape=(self.dim_x * self.dim_y, self.num_eig),
-              dtype=tf.complex64,
-              initializer=complex_initializer(tf.random_normal_initializer),
-              trainable=True)
+            self.eig_vec = self.add_weight(
+                "eig_vec",
+                shape=(self.dim_x * self.dim_y, self.num_eig),
+                dtype=tf.complex64,
+                initializer=complex_initializer(tf.random_normal_initializer),
+                trainable=True)
         self.eig_val = self.add_weight(
             "eig_val",
             shape=(self.num_eig,),
@@ -693,17 +576,17 @@ class ComplexQMeasureClassifEig(tf.keras.layers.Layer):
         eig_val = tf.keras.activations.relu(self.eig_val)
         eig_val = eig_val / tf.reduce_sum(eig_val)
         rho_h = tf.matmul(eig_vec,
-                          tf.cast(tf.linalg.diag(tf.sqrt(eig_val)), tf.complex64))
+            tf.cast(tf.linalg.diag(tf.sqrt(eig_val)), tf.complex64))
         rho_h = tf.reshape(
-            rho_h, 
+            rho_h,
             (self.dim_x, self.dim_y, self.num_eig))
         rho_h = tf.einsum(
             '...k, klm -> ...lm',
             inputs, rho_h,
-            optimize='optimal') 
+            optimize='optimal')
         rho_y = tf.einsum(
             '...ik, ...jk -> ...ij',
-            rho_h, tf.math.conj(rho_h), 
+            rho_h, tf.math.conj(rho_h),
             optimize='optimal')
         trace_val = tf.einsum('...ii->...', rho_y, optimize='optimal')
         trace_val = tf.expand_dims(trace_val, axis=-1)
@@ -748,7 +631,7 @@ class ComplexQMeasureClassifEig(tf.keras.layers.Layer):
         return (self.dim_y, self.dim_y)
 
 class QMeasureDMClassif(tf.keras.layers.Layer):
-    """Quantum measurement layer for classification. 
+    """Quantum measurement layer for classification.
     Receives as input a density matrix.
 
     Input shape:
@@ -817,7 +700,7 @@ class QMeasureDMClassifEig(tf.keras.layers.Layer):
     """Quantum measurement layer for classification.
     Receives as input a density matrix.
     Represents the internal density matrix using a factorization:
-    
+
     `dm = tf.matmul(V, tf.transpose(V, conjugate=True))`
 
     This representation is ameanable to gradient-based learning.
@@ -831,7 +714,8 @@ class QMeasureDMClassifEig(tf.keras.layers.Layer):
     Arguments:
         dim_x: int. the dimension of the input state
         dim_y: int. the dimension of the output state
-        num_eig: int. Number of eigenvectors used to represent the density matrix
+        num_eig: int. Number of eigenvectors used to represent 
+                 the density matrix
     """
 
     @typechecked
@@ -929,7 +813,7 @@ class QMeasureDMClassifEig(tf.keras.layers.Layer):
 
     def compute_output_shape(self, input_shape):
         return (self.dim_y, self.dim_y)
-        
+
 class QMeasureDensity(tf.keras.layers.Layer):
     """Quantum measurement layer for density estimation.
 
@@ -1114,12 +998,12 @@ class ComplexQMeasureDensity(tf.keras.layers.Layer):
             raise ValueError(
                 f'Input dimension must be (batch_size, {self.dim_x})')
         with tf.device('cpu:0'):
-          self.rho = self.add_weight(
-              "rho",
-              shape=(self.dim_x, self.dim_x),
-              dtype=tf.complex64,
-              initializer=complex_initializer(tf.keras.initializers.Zeros),
-              trainable=True)
+            self.rho = self.add_weight(
+                "rho",
+                shape=(self.dim_x, self.dim_x),
+                dtype=tf.complex64,
+                initializer=complex_initializer(tf.keras.initializers.Zeros),
+                trainable=True)
         axes = {i: input_shape[i] for i in range(1, len(input_shape))}
         self.input_spec = tf.keras.layers.InputSpec(
             ndim=len(input_shape), axes=axes)
@@ -1138,7 +1022,7 @@ class ComplexQMeasureDensity(tf.keras.layers.Layer):
 class ComplexQMeasureDensityEig(tf.keras.layers.Layer):
     """Quantum measurement layer for density estimation with complex terms.
     Represents the density matrix using a factorization:
-    
+
     `dm = tf.matmul(V, tf.transpose(V, conjugate=True))`
 
     This rerpesentation is ameanable to gradient-based learning
@@ -1171,12 +1055,12 @@ class ComplexQMeasureDensityEig(tf.keras.layers.Layer):
             raise ValueError(
                 f'Input dimension must be (batch_size, {self.dim_x})')
         with tf.device('cpu:0'):
-          self.eig_vec = self.add_weight(
-              "eig_vec",
-              shape=(self.dim_x, self.num_eig),
-              dtype=tf.complex64,
-              initializer=complex_initializer(tf.random_normal_initializer),
-              trainable=True)
+            self.eig_vec = self.add_weight(
+                "eig_vec",
+                shape=(self.dim_x, self.num_eig),
+                dtype=tf.complex64,
+                initializer=complex_initializer(tf.random_normal_initializer),
+                trainable=True)
         self.eig_val = self.add_weight(
             "eig_val",
             shape=(self.num_eig,),
@@ -1249,7 +1133,6 @@ class CrossProduct(tf.keras.layers.Layer):
     Arguments:
     """
 
-    @typechecked
     def __init__(
             self,
             **kwargs
@@ -1293,7 +1176,6 @@ class DensityMatrix2Dist(tf.keras.layers.Layer):
     Arguments:
     """
 
-    @typechecked
     def __init__(
             self,
             **kwargs
@@ -1329,7 +1211,6 @@ class ComplexDensityMatrix2Dist(tf.keras.layers.Layer):
     Arguments:
     """
 
-    @typechecked
     def __init__(
             self,
             **kwargs
@@ -1359,8 +1240,8 @@ class ComplexDensityMatrix2Dist(tf.keras.layers.Layer):
 
 class DensityMatrixRegression(tf.keras.layers.Layer):
     """
-    Calculates the expected value and variance of a measure on a 
-    density matrix. The measure associates evenly distributed values 
+    Calculates the expected value and variance of a measure on a
+    density matrix. The measure associates evenly distributed values
     between 0 and 1 to the different n basis states.
 
     Input shape:
@@ -1370,7 +1251,6 @@ class DensityMatrixRegression(tf.keras.layers.Layer):
     Arguments:
     """
 
-    @typechecked
     def __init__(
             self,
             **kwargs
@@ -1383,7 +1263,8 @@ class DensityMatrixRegression(tf.keras.layers.Layer):
             raise ValueError('A `DensityMatrix2Dist` layer should be '
                              'called with a tensor of shape '
                              '(batch_size, n, n)')
-        self.vals = tf.constant(tf.linspace(0., 1., input_shape[1]), dtype=tf.float32)
+        self.vals = tf.constant(tf.linspace(0., 1., input_shape[1]),
+                                dtype=tf.float32)
         self.vals2 = self.vals ** 2
         self.built = True
 
@@ -1392,8 +1273,10 @@ class DensityMatrixRegression(tf.keras.layers.Layer):
             raise ValueError('A `DensityMatrix2Dist` layer should be '
                              'called with a tensor of shape '
                              '(batch_size, n, n)')
-        mean = tf.einsum('...ii,i->...', inputs, self.vals, optimize='optimal')
-        mean2 = tf.einsum('...ii,i->...', inputs, self.vals2, optimize='optimal')
+        mean = tf.einsum('...ii,i->...', inputs, 
+                         self.vals, optimize='optimal')
+        mean2 = tf.einsum('...ii,i->...', inputs, 
+                          self.vals2, optimize='optimal')
         var = mean2 - mean ** 2
         return tf.stack([mean, var], axis = -1)
 
@@ -1413,7 +1296,6 @@ class ComplexDensityMatrixRegression(tf.keras.layers.Layer):
     Arguments:
     """
 
-    @typechecked
     def __init__(
             self,
             **kwargs
@@ -1426,7 +1308,8 @@ class ComplexDensityMatrixRegression(tf.keras.layers.Layer):
             raise ValueError('A `DensityMatrix2Dist` layer should be '
                              'called with a tensor of shape '
                              '(batch_size, n, n)')
-        self.vals = tf.cast(tf.constant(tf.linspace(0., 1., input_shape[1]), dtype=tf.float32), tf.complex64)
+        self.vals = tf.cast(tf.constant(tf.linspace(0., 1., input_shape[1]), 
+                            dtype=tf.float32), tf.complex64)
         self.vals2 = self.vals ** 2
         self.built = True
 
@@ -1436,7 +1319,8 @@ class ComplexDensityMatrixRegression(tf.keras.layers.Layer):
                              'called with a tensor of shape '
                              '(batch_size, n, n)')
         mean = tf.einsum('...ii,i->...', inputs, self.vals, optimize='optimal')
-        mean2 = tf.einsum('...ii,i->...', inputs, self.vals2, optimize='optimal')
+        mean2 = tf.einsum('...ii,i->...', inputs, self.vals2,
+            optimize='optimal')
         mean = tf.cast(mean, tf.float32)
         mean2 = tf.cast(mean2, tf.float32)
         var = mean2 - mean ** 2

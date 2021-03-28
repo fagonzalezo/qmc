@@ -115,52 +115,6 @@ class QMClassifierSGD(tf.keras.Model):
         base_config = super().get_config()
         return {**base_config, **config}
 
-class QMClassifierSGDF(tf.keras.Model):
-    """
-    A Quantum Measurement Classifier model trainable using
-    gradient descent.
-
-    Arguments:
-        input_dim: dimension of the input
-        dim_x: dimension of the input quantum feature map
-        dim_y: dimension of the output representation
-        num_eig: Number of eigenvectors used to represent the density matrix. 
-                 a value of 0 or less implies num_eig = dim_x
-        gamma: float. Gamma parameter of the RBF kernel to be approximated.
-        random_state: random number generator seed.
-    """
-    def __init__(self, input_dim, dim_x, dim_y, num_eig=0, gamma=1, random_state=None):
-        super(QMClassifierSGDF, self).__init__()
-        self.fm_x = layers.QFeatureMapRFF(
-            input_dim=input_dim,
-            dim=dim_x, gamma=gamma, random_state=random_state)
-        self.qm = layers.QMeasureClassifEigF(dim_x=dim_x, dim_y=dim_y, num_eig=num_eig)
-        self.dm2dist = layers.DensityMatrix2Dist()
-        self.dim_x = dim_x
-        self.dim_y = dim_y
-        self.gamma = gamma
-        self.random_state = random_state
-
-    def call(self, inputs):
-        psi_x = self.fm_x(inputs)
-        rho_y = self.qm(psi_x)
-        probs = self.dm2dist(rho_y)
-        return probs
-
-    def set_rho(self, rho):
-        return self.qm.set_rho(rho)
-
-    def get_config(self):
-        config = {
-            "dim_x": self.dim_x,
-            "dim_y": self.dim_y,
-            "num_eig": self.num_eig,
-            "gamma": self.gamma,
-            "random_state": self.random_state
-        }
-        base_config = super().get_config()
-        return {**base_config, **config}
-
 class ComplexQMClassifierSGD(tf.keras.Model):
     """
     A Quantum Measurement Classifier model trainable using
@@ -325,7 +279,8 @@ class DMKDClassifier(tf.keras.Model):
         for i in range(self.num_classes):
             probs.append(self.qmd[i](psi_x))
         posteriors = tf.stack(probs, axis=-1)
-        posteriors = posteriors / tf.expand_dims(tf.reduce_sum(posteriors, axis=-1), axis=-1)
+        posteriors = (posteriors / 
+            tf.expand_dims(tf.reduce_sum(posteriors, axis=-1), axis=-1))
         return posteriors
 
     @tf.function
@@ -510,7 +465,8 @@ class ComplexDMKDClassifierSGD(tf.keras.Model):
         gamma: float. Gamma parameter of the RBF kernel to be approximated
         random_state: random number generator seed
     """
-    def __init__(self, input_dim, dim_x, num_classes, num_eig=0, gamma=1, random_state=None):
+    def __init__(self, input_dim, dim_x, num_classes, 
+                 num_eig=0, gamma=1, random_state=None):
         super(ComplexDMKDClassifierSGD, self).__init__()
         self.fm_x = layers.QFeatureMapComplexRFF(
             input_dim=input_dim,
@@ -632,52 +588,6 @@ class QMRegressorSGD(tf.keras.Model):
             input_dim=input_dim,
             dim=dim_x, gamma=gamma, random_state=random_state)
         self.qm = layers.QMeasureClassifEig(dim_x=dim_x, dim_y=dim_y, num_eig=num_eig)
-        self.dmregress = layers.DensityMatrixRegression()
-        self.dim_x = dim_x
-        self.dim_y = dim_y
-        self.gamma = gamma
-        self.random_state = random_state
-
-    def call(self, inputs):
-        psi_x = self.fm_x(inputs)
-        rho_y = self.qm(psi_x)
-        mean_var = self.dmregress(rho_y)
-        return mean_var
-
-    def set_rho(self, rho):
-        return self.qm.set_rho(rho)
-
-    def get_config(self):
-        config = {
-            "dim_x": self.dim_x,
-            "dim_y": self.dim_y,
-            "num_eig": self.num_eig,
-            "gamma": self.gamma,
-            "random_state": self.random_state
-        }
-        base_config = super().get_config()
-        return {**base_config, **config}
-
-class QMRegressorSGDF(tf.keras.Model):
-    """
-    A Quantum Measurement Regressor model trainable using
-    gradient descent.
-
-    Arguments:
-        input_dim: dimension of the input
-        dim_x: dimension of the input quantum feature map
-        dim_y: dimension of the output quantum feature map
-        num_eig: Number of eigenvectors used to represent the density matrix. 
-                 a value of 0 or less implies num_eig = dim_x
-        gamma: float. Gamma parameter of the RBF kernel to be approximated.
-        random_state: random number generator seed.
-    """
-    def __init__(self, input_dim, dim_x, dim_y, num_eig=0, gamma=1, random_state=None):
-        super(QMRegressorSGDF, self).__init__()
-        self.fm_x = layers.QFeatureMapRFF(
-            input_dim=input_dim,
-            dim=dim_x, gamma=gamma, random_state=random_state)
-        self.qm = layers.QMeasureClassifEigF(dim_x=dim_x, dim_y=dim_y, num_eig=num_eig)
         self.dmregress = layers.DensityMatrixRegression()
         self.dim_x = dim_x
         self.dim_y = dim_y

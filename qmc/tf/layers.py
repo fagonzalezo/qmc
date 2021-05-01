@@ -103,7 +103,7 @@ class QFeatureMapOneHot(tf.keras.layers.Layer):
         self.built = True
 
     def call(self, inputs):
-        out = tf.one_hot(tf.cast(inputs, dtype=tf.int32),
+        out = tf.one_hot(tf.cast(inputs, tf.int32),
                          self.num_classes, on_value=1., off_value=0.)
         b_size = tf.shape(out)[0]
         t_psi = out[:, 0, :]
@@ -698,35 +698,45 @@ class QMeasureDMClassif(tf.keras.layers.Layer):
 
 class QMeasureDMClassifEig(tf.keras.layers.Layer):
     """Quantum measurement layer for classification.
-    Receives as input a density matrix.
-    Represents the internal density matrix using a factorization:
+    Receives as input a factorized density matrix represented by a set of vectors
+    and values. Represents the internal density matrix using a factorization:
 
     `dm = tf.matmul(V, tf.transpose(V, conjugate=True))`
 
     This representation is ameanable to gradient-based learning.
 
     Input shape:
-        (batch_size, dim_x, dim_x)
+        (batch_size, d_in, dim_x + 1)
         where dim_x is the dimension of the input state
+        and d_in is the rank of the input factorization. The weights of the
+        input factorization of sample i are [i, :, 0], and the vectors
+        are [i, :, 1:dim_x + 1].
     Output shape:
-        (batch_size, dim_y, dim_y)
+        (batch_size, num_eig, dim_y)
         where dim_y is the dimension of the output state
+        and num_eig is the number of eigenvectors used to represent the train
+        density matrix. The weights of the
+        output factorization for sample i are [i, :, 0], and the vectors
+        are [i, :, 1:dim_y + 1].
+
     Arguments:
         dim_x: int. the dimension of the input state
         dim_y: int. the dimension of the output state
-        num_eig: int. Number of eigenvectors used to represent 
+        num_eig: int. Number of eigenvectors used to represent
                  the density matrix
     """
 
     @typechecked
     def __init__(
             self,
+            d_in: int,
             dim_x: int,
             dim_y: int = 2,
             num_eig: int = 0,
             **kwargs
     ):
         super().__init__(**kwargs)
+        self.d_in = d_in
         self.dim_x = dim_x
         self.dim_y = dim_y
         if num_eig < 1:
@@ -734,9 +744,9 @@ class QMeasureDMClassifEig(tf.keras.layers.Layer):
         self.num_eig = num_eig
 
     def build(self, input_shape):
-        if input_shape[1] != self.dim_x or input_shape[2] != self.dim_x:
+        if input_shape[2] != self.d_in or input_shape[1] != self.dim_x + 1:
             raise ValueError(
-                f'Input dimension must be (batch_size, {self.dim_x}, {self.dim_x})')
+                f'Input dimension must be (batch_size, {self.dim_x + 1}, {self.d_in} )')
         self.eig_vec = self.add_weight(
             "eig_vec",
             shape=(self.dim_x * self.dim_y, self.num_eig),
@@ -750,33 +760,35 @@ class QMeasureDMClassifEig(tf.keras.layers.Layer):
         axes = {i: input_shape[i] for i in range(1, len(input_shape))}
         self.input_spec = tf.keras.layers.InputSpec(
             ndim=len(input_shape), axes=axes)
+        self.eps = tf.keras.backend.epsilon()
         self.built = True
 
     def call(self, inputs):
         norms = tf.expand_dims(tf.linalg.norm(self.eig_vec, axis=0), axis=0)
         eig_vec = self.eig_vec / norms
         eig_val = tf.keras.activations.relu(self.eig_val)
-        eig_val = eig_val / tf.reduce_sum(eig_val)
-        rho_h = tf.matmul(eig_vec,
-                          tf.linalg.diag(tf.sqrt(eig_val)))
-        rho = tf.matmul(
-            rho_h, 
-            tf.transpose(rho_h, conjugate=True))
-        rho = tf.reshape(
-            rho, 
-            (self.dim_x, self.dim_y, self.dim_x, self.dim_y))
-        rho_res = tf.einsum(
-            '...ik, klmn, ...mo -> ...ilon',
-            inputs, rho, inputs,
-            optimize='optimal')  # shape (b, nx, ny, ny, nx)
-        trace_val = tf.einsum('...ijij->...', rho_res, optimize='optimal') # shape (b)
-        trace_val = tf.expand_dims(trace_val, axis=-1)
-        trace_val = tf.expand_dims(trace_val, axis=-1)
-        trace_val = tf.expand_dims(trace_val, axis=-1)
-        trace_val = tf.expand_dims(trace_val, axis=-1)
-        rho_res = rho_res / trace_val
-        rho_y = tf.einsum('...ijik->...jk', rho_res, optimize='optimal') # shape (b, ny, ny)
-        return rho_y
+        eig_val = eig_val / tf.reduce_sum(eig_val) # shape (ne)
+        eig_vec = tf.reshape(eig_vec, (self.dim_x, self.dim_y, self.num_eig))
+        in_w = inputs[:, 0, :] # shape (b, d_in)
+        in_v = inputs[:, 1:, :] # shape (b, dim_x, d_in)
+        eig_vec_y = tf.einsum('...ji,jkl->...kli', in_v, eig_vec, 
+                              optimize='optimal') # shape (b, dim_y, ne, d_in)
+        eig_vec_y_norm = tf.linalg.norm(eig_vec_y, axis=1) # shape (b, ne, d_in)
+        eig_vec_y = (eig_vec_y /
+                     tf.expand_dims(tf.maximum(eig_vec_y_norm, self.eps),
+                                               axis=1))
+        eig_vec_y = tf.reshape(eig_vec_y,
+                               (-1, self.dim_y, self.num_eig * self.d_in))
+        out_w = tf.einsum('i,...ij->...ij',
+                          eig_val,
+                          tf.square(eig_vec_y_norm)) # shape (b, ne, d_in)
+        out_w_sum = tf.maximum(tf.reduce_sum(out_w, axis=1), self.eps)
+        out_w = out_w / tf.expand_dims(out_w_sum, axis=1)
+        out_w = tf.einsum('...j,...ij->...ij', in_w, out_w)
+        out_w = tf.reshape(out_w, (-1, self.num_eig * self.d_in))
+        out_w = tf.expand_dims(out_w, axis= 1) # shape (b, 1, ne)
+        out = tf.concat((out_w, eig_vec_y), 1)
+        return out
 
     def set_rho(self, rho):
         """
@@ -794,7 +806,7 @@ class QMeasureDMClassifEig(tf.keras.layers.Layer):
                 f'rho shape must be ({self.dim_x}, {self.dim_y},'
                 f' {self.dim_x}, {self.dim_y})')
         if not self.built:
-            self.build((None, self.dim_x, self.dim_x))
+            self.build((None, self.dim_x + 1, self.d_in))
         rho_prime = tf.reshape(
             rho, 
             (self.dim_x * self.dim_y, self.dim_x * self.dim_y,))
@@ -812,7 +824,7 @@ class QMeasureDMClassifEig(tf.keras.layers.Layer):
         return {**base_config, **config}
 
     def compute_output_shape(self, input_shape):
-        return (self.dim_y, self.dim_y)
+        return (self.dim_y + 1, self.d_in * self.num_eig)
 
 class QMeasureDensity(tf.keras.layers.Layer):
     """Quantum measurement layer for density estimation.
@@ -1079,7 +1091,7 @@ class ComplexQMeasureDensityEig(tf.keras.layers.Layer):
         eig_val = eig_val / tf.reduce_sum(eig_val)
         rho_h = tf.matmul(eig_vec,
                           tf.cast(tf.linalg.diag(tf.sqrt(eig_val)), 
-                                  dtype=tf.complex64))
+                                  tf.complex64))
         rho_h = tf.matmul(tf.math.conj(inputs), rho_h)
         rho_res = tf.einsum(
             '...i, ...i -> ...',

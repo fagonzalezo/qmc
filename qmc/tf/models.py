@@ -79,7 +79,7 @@ class QMClassifierSGD(tf.keras.Model):
         dim_x: dimension of the input quantum feature map
         dim_y: dimension of the output representation
         num_eig: Number of eigenvectors used to represent the density matrix. 
-                 a value of 0 or less implies num_eig = dim_x
+                 a value of 0 or less implies num_eig = dim_x * dim_y
         gamma: float. Gamma parameter of the RBF kernel to be approximated.
         random_state: random number generator seed.
     """
@@ -125,7 +125,7 @@ class ComplexQMClassifierSGD(tf.keras.Model):
         dim_x: dimension of the input quantum feature map
         dim_y: dimension of the output representation
         num_eig: Number of eigenvectors used to represent the density matrix. 
-                 a value of 0 or less implies num_eig = dim_x
+                 a value of 0 or less implies num_eig = dim_x * dim_y
         gamma: float. Gamma parameter of the RBF kernel to be approximated.
         random_state: random number generator seed.
     """
@@ -408,7 +408,7 @@ class DMKDClassifierSGD(tf.keras.Model):
         dim_x: dimension of the input quantum feature map
         num_classes: number of classes
         num_eig: Number of eigenvectors used to represent the density matrix. 
-                 a value of 0 or less implies num_eig = dim_x
+                 a value of 0 or less implies num_eig = dim_x 
         gamma: float. Gamma parameter of the RBF kernel to be approximated
         random_state: random number generator seed
     """
@@ -461,7 +461,7 @@ class ComplexDMKDClassifierSGD(tf.keras.Model):
         dim_x: dimension of the input quantum feature map
         num_classes: number of classes
         num_eig: Number of eigenvectors used to represent the density matrix. 
-                 a value of 0 or less implies num_eig = dim_x
+                 a value of 0 or less implies num_eig = dim_x 
         gamma: float. Gamma parameter of the RBF kernel to be approximated
         random_state: random number generator seed
     """
@@ -578,7 +578,7 @@ class QMRegressorSGD(tf.keras.Model):
         dim_x: dimension of the input quantum feature map
         dim_y: dimension of the output quantum feature map
         num_eig: Number of eigenvectors used to represent the density matrix. 
-                 a value of 0 or less implies num_eig = dim_x
+                 a value of 0 or less implies num_eig = dim_x * dim_y
         gamma: float. Gamma parameter of the RBF kernel to be approximated.
         random_state: random number generator seed.
     """

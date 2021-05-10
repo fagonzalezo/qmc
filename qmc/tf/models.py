@@ -3,6 +3,7 @@ Quantum Measurement Classfiication Models
 '''
 
 import tensorflow as tf
+from tensorflow.python.keras.engine import data_adapter
 from . import layers
 
 class QMClassifier(tf.keras.Model):
@@ -47,7 +48,8 @@ class QMClassifier(tf.keras.Model):
         return rho
 
     def train_step(self, data):
-        x, y = data
+        data =  data_adapter.expand_1d(data)
+        x, y, sample_weight = data_adapter.unpack_x_y_sample_weight(data)
         rho = self.call_train(x, y)
         self.qm.weights[0].assign_add(rho)
         return {}
@@ -196,7 +198,8 @@ class QMDensity(tf.keras.Model):
         return rho
 
     def train_step(self, data):
-        x = data
+        data =  data_adapter.expand_1d(data)
+        x, y, sample_weight = data_adapter.unpack_x_y_sample_weight(data)
         rho = self.call_train(x)
         self.qmd.weights[0].assign_add(rho)
         return {}
@@ -300,7 +303,8 @@ class DMKDClassifier(tf.keras.Model):
         return rhos
 
     def train_step(self, data):
-        x, y = data
+        data =  data_adapter.expand_1d(data)
+        x, y, sample_weight = data_adapter.unpack_x_y_sample_weight(data)
         rhos = self.call_train(x, y)
         for i in range(self.num_classes):
             self.qmd[i].weights[0].assign_add(rhos[i])
@@ -373,7 +377,8 @@ class ComplexDMKDClassifier(tf.keras.Model):
         return rhos
 
     def train_step(self, data):
-        x, y = data
+        data =  data_adapter.expand_1d(data)
+        x, y, sample_weight = data_adapter.unpack_x_y_sample_weight(data)
         rhos = self.call_train(x, y)
         for i in range(self.num_classes):
             self.qmd[i].weights[0].assign_add(rhos[i])
@@ -547,7 +552,8 @@ class QMRegressor(tf.keras.Model):
         return rho
 
     def train_step(self, data):
-        x, y = data
+        data =  data_adapter.expand_1d(data)
+        x, y, sample_weight = data_adapter.unpack_x_y_sample_weight(data)
         rho = self.call_train(x, y)
         self.qm.weights[0].assign_add(rho)
         return {}

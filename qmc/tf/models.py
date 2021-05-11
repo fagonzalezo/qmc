@@ -53,7 +53,7 @@ class QMClassifier(tf.keras.Model):
         if x.shape[1] is not None:
             rho = self.call_train(x, y)
             self.qm.weights[0].assign_add(rho)
-        return {}
+        return {'loss': 0.0}
 
     def fit(self, *args, **kwargs):
         result = super(QMClassifier, self).fit(*args, **kwargs)

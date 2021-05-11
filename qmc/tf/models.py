@@ -34,7 +34,7 @@ class QMClassifier(tf.keras.Model):
         probs = self.dm2dist(rho_y)
         return probs
 
-    @tf.function
+    # @tf.function
     def call_train(self, x, y):
         if not self.qm.built:
             self.call(x)
@@ -50,8 +50,9 @@ class QMClassifier(tf.keras.Model):
     def train_step(self, data):
         data =  data_adapter.expand_1d(data)
         x, y, sample_weight = data_adapter.unpack_x_y_sample_weight(data)
-        rho = self.call_train(x, y)
-        self.qm.weights[0].assign_add(rho)
+        if x.shape[1] is not None:
+            rho = self.call_train(x, y)
+            self.qm.weights[0].assign_add(rho)
         return {}
 
     def fit(self, *args, **kwargs):
@@ -200,8 +201,9 @@ class QMDensity(tf.keras.Model):
     def train_step(self, data):
         data =  data_adapter.expand_1d(data)
         x, y, sample_weight = data_adapter.unpack_x_y_sample_weight(data)
-        rho = self.call_train(x)
-        self.qmd.weights[0].assign_add(rho)
+        if x.shape[1] is not None:
+            rho = self.call_train(x)
+            self.qmd.weights[0].assign_add(rho)
         return {}
 
     def fit(self, *args, **kwargs):
@@ -305,9 +307,10 @@ class DMKDClassifier(tf.keras.Model):
     def train_step(self, data):
         data =  data_adapter.expand_1d(data)
         x, y, sample_weight = data_adapter.unpack_x_y_sample_weight(data)
-        rhos = self.call_train(x, y)
-        for i in range(self.num_classes):
-            self.qmd[i].weights[0].assign_add(rhos[i])
+        if x.shape[1] is not None:
+            rhos = self.call_train(x, y)
+            for i in range(self.num_classes):
+                self.qmd[i].weights[0].assign_add(rhos[i])
         return {}
 
     def fit(self, *args, **kwargs):
@@ -380,8 +383,9 @@ class ComplexDMKDClassifier(tf.keras.Model):
         data =  data_adapter.expand_1d(data)
         x, y, sample_weight = data_adapter.unpack_x_y_sample_weight(data)
         rhos = self.call_train(x, y)
-        for i in range(self.num_classes):
-            self.qmd[i].weights[0].assign_add(rhos[i])
+        if x.shape[1] is not None:
+            for i in range(self.num_classes):
+                self.qmd[i].weights[0].assign_add(rhos[i])
         return {}
 
     def fit(self, *args, **kwargs):
@@ -554,8 +558,9 @@ class QMRegressor(tf.keras.Model):
     def train_step(self, data):
         data =  data_adapter.expand_1d(data)
         x, y, sample_weight = data_adapter.unpack_x_y_sample_weight(data)
-        rho = self.call_train(x, y)
-        self.qm.weights[0].assign_add(rho)
+        if x.shape[1] is not None:
+            rho = self.call_train(x, y)
+            self.qm.weights[0].assign_add(rho)
         return {}
 
     def fit(self, *args, **kwargs):

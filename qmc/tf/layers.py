@@ -807,8 +807,8 @@ class QMClassifSDecompFDMatrix(tf.keras.layers.Layer):
     Arguments:
         dim_x: int. the dimension of the input state
         dim_y: int. the dimension of the output state
-        n_comp: int. Number of components used to represent train
-                 the density matrix
+        n_comp: int. Number of components used to represent 
+                 the train density matrix
     """
 
     @typechecked
@@ -851,14 +851,11 @@ class QMClassifSDecompFDMatrix(tf.keras.layers.Layer):
         self.built = True
 
     def call(self, inputs):
-        # n_comp_in = tf.shape(inputs)[-1]
         norms_x = tf.expand_dims(tf.linalg.norm(self.c_x, axis=0), axis=0)
         c_x = self.c_x / norms_x
         norms_y = tf.expand_dims(tf.linalg.norm(self.c_y, axis=0), axis=0)
         c_y = self.c_y / norms_y
-        # eig_val = tf.keras.activations.relu(self.eig_val)
         eig_val = tf.abs(self.eig_val)
-        # eig_val = tf.sqrt(tf.square(self.eig_val) + self.eps)
         eig_val = eig_val / tf.reduce_sum(eig_val) # shape (ne)
         in_w = inputs[:, 0, :] # shape (b, n_comp_in)
         in_v = inputs[:, 1:, :] # shape (b, dim_x, n_comp_in)
@@ -867,7 +864,7 @@ class QMClassifSDecompFDMatrix(tf.keras.layers.Layer):
                            optimize='optimal') # shape (b, n_comp_in, n_comp)
         out_w = (tf.expand_dims(tf.expand_dims(eig_val, axis=0), axis=0) *
                  tf.square(out_vw)) # shape (b, n_comp_in, n_comp)
-        out_w_sum = tf.maximum(tf.reduce_sum(out_w, axis=2), self.eps)
+        out_w_sum = tf.maximum(tf.reduce_sum(out_w, axis=2), self.eps)  # shape (b, n_comp_in)
         out_w = out_w / tf.expand_dims(out_w_sum, axis=2)
         out_w = tf.einsum('...i,...ij->...j', in_w, out_w)
         out_w = tf.expand_dims(out_w, axis=1)
@@ -881,12 +878,67 @@ class QMClassifSDecompFDMatrix(tf.keras.layers.Layer):
         c_x = self.c_x / norms_x
         norms_y = tf.expand_dims(tf.linalg.norm(self.c_y, axis=0), axis=0)
         c_y = self.c_y / norms_y
-        eig_val = tf.keras.activations.relu(self.eig_val)
+        eig_val = tf.abs(self.eig_val)
         eig_val = eig_val / tf.reduce_sum(eig_val) # shape (ne)
         rho = tf.einsum('k,ik,jk,lk,mk->ijlm', eig_val, c_x, c_y,
                         tf.math.conj(c_x), tf.math.conj(c_y))
         return rho
-        
+
+    def set_rho(self, rho, tol=1e-2, max_iter=300, learning_rate=0.001):
+        initializer = tf.keras.initializers.Orthogonal()
+        opt = tf.keras.optimizers.Adam(learning_rate=learning_rate)
+        shape = rho.shape
+        dim_x = shape[0]
+        dim_y = shape[1]
+        c_x_in = tf.Variable(initializer(shape=(dim_x, self.n_comp)))
+        c_y_in = tf.Variable(initializer(shape=(dim_y, self.n_comp)))
+        eig_val_in = tf.Variable(tf.ones((self.n_comp)) / self.n_comp)
+        for i in range(max_iter):
+            with tf.GradientTape() as tape:
+                norms_x = tf.expand_dims(tf.linalg.norm(c_x_in, axis=0), axis=0)
+                c_x = c_x_in / norms_x
+                norms_y = tf.expand_dims(tf.linalg.norm(c_y_in, axis=0), axis=0)
+                c_y = c_y_in / norms_y
+                eig_val = tf.abs(eig_val_in)
+                eig_val = eig_val / tf.reduce_sum(eig_val) # shape (ne)
+                rho_out = tf.einsum('k,ik,jk,lk,mk->ijlm', eig_val, c_x, c_y,
+                                c_x, c_y)
+                loss = tf.linalg.norm(rho - rho_out)
+            var_list = [c_x_in, c_y_in, eig_val_in]
+            grads = tape.gradient(loss, var_list)
+            opt.apply_gradients(zip(grads, var_list))
+            if loss < tol:
+                break
+        self.c_x.assign(c_x_in)
+        self.c_y.assign(c_y_in)
+        self.eig_val.assign(eig_val)
+        return i, loss.numpy()
+
+    def set_rho_diag(self, rho):
+        shape = rho.shape
+        dim_x = shape[0]
+        dim_y = shape[1]
+        n_comp = dim_x * dim_y
+        if n_comp != self.n_comp:
+            raise ValueError(
+                f'self.n_comp must be {n_comp}'
+                f' but it is {self.n_comp}.'
+                )   
+        c_x_in = np.zeros(shape=(dim_x, self.n_comp))
+        c_y_in = np.zeros(shape=(dim_y, self.n_comp))
+        eig_val = np.zeros((self.n_comp))
+        comp_idx = 0
+        for i in range(dim_x):
+            for j in range(dim_y):
+                c_x_in[i, comp_idx] = 1.
+                c_y_in[j, comp_idx] = 1.
+                eig_val[comp_idx] = rho[i, j, i, j]
+                comp_idx += 1
+        self.c_x.assign(c_x_in)
+        self.c_y.assign(c_y_in)
+        self.eig_val.assign(eig_val)
+        return 
+
     def get_config(self):
         config = {
             "dim_x": self.dim_x,

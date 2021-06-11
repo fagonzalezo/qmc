@@ -1328,8 +1328,8 @@ class DMCrossProduct(tf.keras.layers.Layer):
         m = tf.shape(v_x)[2]
         dim_y = tf.shape(v_y)[1]
         n = tf.shape(v_y)[2]
-        v = tf.einsum('...ik,...jl->...ijkl', v_x, v_y)
-        w = tf.einsum('...k,...l->...kl', w_x, w_y)
+        v = tf.einsum('...ik,...jl->...ijkl', v_x, v_y, optimize='optimal')
+        w = tf.einsum('...k,...l->...kl', w_x, w_y, optimize='optimal')
         v = tf.reshape(v, (batch_size, dim_x * dim_y, m * n))
         w = tf.reshape(w, (batch_size, 1, m * n))
         rho = tf.concat((w, v), 1)

@@ -1257,6 +1257,71 @@ class ComplexQMeasureDensityEig(tf.keras.layers.Layer):
     def compute_output_shape(self, input_shape):
         return (1,)
 
+class QuantumDenseLayer(tf.keras.layers.Layer):
+    """Quantum dense layer for classification.
+
+    Input shape:
+        (batch_size, dim_in)
+        where dim_in is the dimension of the input state
+    Output shape:
+        (batch_size, dim_out)
+        where dim_out is the dimension of the output state
+    Arguments:
+        dim_in: int. the dimension of the input state
+        dim_out: int. the dimension of the output state
+        last_layer: bool. True if the layer is the last layer of a sequential model
+    """
+
+    @typechecked
+    def __init__(
+            self,
+            dim_in: int,
+            dim_out: int,
+            last_layer: bool = True,
+            **kwargs
+    ):
+        super().__init__(**kwargs)
+        self.dim_in = dim_in
+        self.dim_out = dim_out
+        self.last_layer = last_layer
+
+
+    def build(self, input_shape):
+        if input_shape[1] != self.dim_in:
+            raise ValueError(
+                f'Input dimension must be (batch_size, {self.dim_in})')
+        self.eig_vec = self.add_weight(
+            "eig_vec",
+            shape=(self.dim_out, self.dim_in),
+            initializer=tf.keras.initializers.random_normal(),
+            trainable=True)
+        axes = {i: input_shape[i] for i in range(1, len(input_shape))}
+        self.input_spec = tf.keras.layers.InputSpec(
+            ndim=len(input_shape), axes=axes)
+        self.built = True
+
+    def call(self, inputs):
+        norms = tf.expand_dims(tf.linalg.norm(self.eig_vec, axis=1), axis=1)
+        eig_vec = self.eig_vec / norms
+        psy_out = tf.einsum('ij,...j->...i', eig_vec, inputs, optimize='optimal') # shape (b, n_out)
+        norms_psy_out = tf.expand_dims(tf.linalg.norm(psy_out, axis=1), axis=1)
+        psy_out = psy_out/norms_psy_out
+        if self.last_layer == True:
+          prob_out = tf.math.square(psy_out)
+          return prob_out
+        return psy_out
+
+    def get_config(self):
+        config = {
+            "dim_in": self.dim_in,
+            "dim_out": self.dim_out
+        }
+        base_config = super().get_config()
+        return {**base_config, **config}
+
+    def compute_output_shape(self, input_shape):
+        return (self.dim_out)
+
 ##### Util layers
 
 class Vector2DensityMatrix(tf.keras.layers.Layer):

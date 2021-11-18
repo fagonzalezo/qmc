@@ -5,7 +5,6 @@ utilities.
 
 import numpy as np
 import tensorflow as tf
-from typeguard import typechecked
 from sklearn.kernel_approximation import RBFSampler
 from . import _RBFSamplerORF
 
@@ -27,7 +26,6 @@ class QFeatureMapSmp(tf.keras.layers.Layer):
         beta: parameter beta of the softmax function
     """
 
-    @typechecked
     def __init__(
             self,
             dim: int = 2,
@@ -84,7 +82,6 @@ class QFeatureMapOneHot(tf.keras.layers.Layer):
         num_classes: int. Number of dimensions to represent each value
     """
 
-    @typechecked
     def __init__(
             self,
             num_classes: int = 2,
@@ -138,7 +135,6 @@ class QFeatureMapRFF(tf.keras.layers.Layer):
         random_state: random number generator seed.
     """
 
-    @typechecked
     def __init__(
             self,
             input_dim: int,
@@ -177,7 +173,7 @@ class QFeatureMapRFF(tf.keras.layers.Layer):
         vals = tf.matmul(inputs, self.rff_weights) + self.offset
         vals = tf.cos(vals)
         vals = vals * tf.sqrt(2. / self.dim)
-        norms = tf.linalg.norm(vals, axis=1)
+        norms = tf.linalg.norm(vals, axis=-1)
         psi = vals / tf.expand_dims(norms, axis=-1)
         return psi
 
@@ -210,7 +206,6 @@ class QFeatureMapORF(tf.keras.layers.Layer):
         random_state: random number generator seed.
     """
 
-    @typechecked
     def __init__(
             self,
             input_dim: int,
@@ -284,7 +279,6 @@ class QFeatureMapComplexRFF(tf.keras.layers.Layer):
         random_state: random number generator seed.
     """
 
-    @typechecked
     def __init__(
             self,
             input_dim: int,
@@ -351,7 +345,6 @@ class QMeasureClassif(tf.keras.layers.Layer):
         dim_y: int. the dimension of the output state
     """
 
-    @typechecked
     def __init__(
             self,
             dim_x: int,
@@ -425,7 +418,6 @@ class QMeasureClassifEig(tf.keras.layers.Layer):
         num_eig: Number of eigenvectors used to represent the density matrix
     """
 
-    @typechecked
     def __init__(
             self,
             dim_x: int,
@@ -533,7 +525,6 @@ class ComplexQMeasureClassifEig(tf.keras.layers.Layer):
         num_eig: Number of eigenvectors used to represent the density matrix
     """
 
-    @typechecked
     def __init__(
             self,
             dim_x: int,
@@ -661,7 +652,6 @@ class QMeasureDMClassifEig(tf.keras.layers.Layer):
                  the density matrix
     """
 
-    @typechecked
     def __init__(
             self,
             dim_x: int,
@@ -811,7 +801,6 @@ class QMClassifSDecompFDMatrix(tf.keras.layers.Layer):
                  the train density matrix
     """
 
-    @typechecked
     def __init__(
             self,
             dim_x: int,
@@ -963,7 +952,6 @@ class QMeasureDensity(tf.keras.layers.Layer):
         dim_x: int. the dimension of the input  state
     """
 
-    @typechecked
     def __init__(
             self,
             dim_x: int,
@@ -1018,7 +1006,6 @@ class QMeasureDensityEig(tf.keras.layers.Layer):
         num_eig: Number of eigenvectors used to represent the density matrix
     """
 
-    @typechecked
     def __init__(
             self,
             dim_x: int,
@@ -1121,7 +1108,6 @@ class ComplexQMeasureDensity(tf.keras.layers.Layer):
         dim_x: int. the dimension of the input  state
     """
 
-    @typechecked
     def __init__(
             self,
             dim_x: int,
@@ -1174,7 +1160,6 @@ class ComplexQMeasureDensityEig(tf.keras.layers.Layer):
         num_eig: Number of eigenvectors used to represent the density matrix
     """
 
-    @typechecked
     def __init__(
             self,
             dim_x: int,
@@ -1272,7 +1257,6 @@ class QuantumDenseLayer(tf.keras.layers.Layer):
         last_layer: bool. True if the layer is the last layer of a sequential model
     """
 
-    @typechecked
     def __init__(
             self,
             dim_in: int,

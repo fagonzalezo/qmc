@@ -1594,3 +1594,44 @@ class ComplexDensityMatrixRegression(tf.keras.layers.Layer):
 
     def compute_output_shape(self, input_shape):
         return (input_shape[1], 2)
+        
+class ProbRegression(tf.keras.layers.Layer):
+    """
+    Calculates the expected value and variance of a measure on a 
+    density matrix. The measure associates evenly distributed values 
+    between 0 and 1 to the different n basis states.
+    Input shape:
+        A tensor with shape (batch_size, n)
+    Output shape:
+        (batch_size, n, 2)
+    Arguments:
+    """
+
+    def __init__(
+            self,
+            **kwargs
+    ):
+        super().__init__(**kwargs)
+
+
+    def build(self, input_shape):
+        if len(input_shape) != 2 :
+            raise ValueError('A `DensityMatrix2Dist` layer should be '
+                             'called with a tensor of shape '
+                             '(batch_size, n)')
+        self.vals = tf.constant(tf.linspace(0.0, 1.0, input_shape[1]), dtype=tf.float32)
+        self.vals2 = self.vals ** 2
+        self.built = True
+
+    def call(self, inputs):
+        if len(inputs.shape) != 2:
+            raise ValueError('A `DensityMatrix2Dist` layer should be '
+                             'called with a tensor of shape '
+                             '(batch_size, n, )')
+        mean = tf.einsum('...i,i->...', inputs, self.vals, optimize='optimal')
+        mean2 = tf.einsum('...i,i->...', inputs, self.vals2, optimize='optimal')
+        var = mean2 - mean ** 2
+        return tf.stack([mean, var], axis = -1)
+
+    def compute_output_shape(self, input_shape):
+        return (input_shape[1], 2)
